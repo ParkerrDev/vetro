@@ -18,6 +18,9 @@ jobs:
           pacman -Syu --noconfirm --needed git base-devel shellcheck lua jq python rust cargo-deny glslang qt6-declarative
           useradd -m checker
       - uses: actions/checkout@v4
+        with:
+          # The whole history: engine/pins names commits of this repository.
+          fetch-depth: 0
       - name: Hand the checkout to the user
         run: chown -R checker "$GITHUB_WORKSPACE"
       - name: Text
