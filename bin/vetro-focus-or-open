@@ -1,0 +1,107 @@
+#!/bin/bash
+# vetro-focus-or-open: an app that is already open is gone to, and the number of
+# its workspace blinks in the bar; an app that is not open is started.
+#
+#   vetro-focus-or-open --desktop ID [-- COMMAND...]
+#       an app by its desktop entry (ID.desktop): its windows are the ones whose
+#       class is the entry's StartupWMClass, its id, or the program it runs.
+#       Started with COMMAND, or else the entry itself. A terminal emulator is
+#       always started anew: a new terminal is what one is opened for.
+#   vetro-focus-or-open --class REGEX -- COMMAND...
+#       any other: its windows are those whose class matches REGEX (ignoring case).
+#
+# Of several windows, the one used last is gone to. Asked for on 2026-10-22:
+# "trying to open an app that is already open should take you to that app and
+# indicate the workspace it is on by blinking the workspace number".
+set -uo pipefail
+
+die() {
+  printf 'vetro-focus-or-open: %s\n' "$*" >&2
+  exit 2
+}
+
+# The entry ID.desktop, where XDG looks for entries: the user's first.
+desktop_file() {
+  local id=$1 dir
+  local dirs="${XDG_DATA_HOME:-$HOME/.local/share}:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+  local IFS=:
+  for dir in $dirs; do
+    [ -r "$dir/applications/$id.desktop" ] && { printf '%s\n' "$dir/applications/$id.desktop"; return 0; }
+  done
+  return 1
+}
+
+# A key of the entry's [Desktop Entry] group.
+entry_key() {
+  awk -v key="$2" '
+    /^\[/ { inside = ($0 == "[Desktop Entry]") }
+    inside && index($0, key "=") == 1 { print substr($0, length(key) + 2); exit }
+  ' "$1"
+}
+
+# The regex of window classes that belong to the entry `id`, one alternative
+# for each name it might go by.
+classes_of() {
+  local id=$1 file names wmclass program
+  names=("$id")
+  if file=$(desktop_file "$id"); then
+    wmclass=$(entry_key "$file" StartupWMClass)
+    program=$(entry_key "$file" Exec | awk '{ print $1 }')
+    [ -n "$wmclass" ] && names+=("$wmclass")
+    [ -n "$program" ] && names+=("$(basename "$program")")
+  fi
+  local regex="" name
+  for name in "${names[@]}"; do
+    # each name taken literally: every regex character escaped
+    name=$(printf '%s' "$name" | sed 's/[][\.*^$+?(){}|/]/\\&/g')
+    regex+="${regex:+|}$name"
+  done
+  printf '^(%s)$\n' "$regex"
+}
+
+is_terminal() {
+  local file
+  file=$(desktop_file "$1") || return 1
+  entry_key "$file" Categories | grep -q 'TerminalEmulator'
+}
+
+mode=${1:-}
+[ $# -ge 2 ] || die "usage: vetro-focus-or-open --desktop ID [-- COMMAND...] | --class REGEX -- COMMAND..."
+key=$2
+shift 2
+if [ "${1:-}" = "--" ]; then shift; fi
+command=("$@")
+
+case $mode in
+  --desktop)
+    key=${key%.desktop}
+    regex=$(classes_of "$key")
+    [ ${#command[@]} -gt 0 ] || command=(uwsm-app -- gtk-launch "$key.desktop")
+    if is_terminal "$key"; then exec setsid "${command[@]}"; fi
+    ;;
+  --class)
+    regex=$key
+    [ ${#command[@]} -gt 0 ] || die "--class needs a command to start the app with"
+    ;;
+  *) die "the first word is --desktop or --class" ;;
+esac
+
+# The window used last among the app's: Hyprland numbers the focus history
+# from 0, the window that has it now.
+found=$(hyprctl clients -j 2>/dev/null | jq -r --arg r "$regex" '
+  [ .[] | select(.mapped and ((.class | test($r; "i")) or (.initialClass | test($r; "i")))) ]
+  | sort_by(.focusHistoryID) | first // empty
+  | "\(.address) \(.workspace.id)"')
+
+if [ -z "$found" ]; then
+  exec setsid "${command[@]}"
+fi
+
+read -r address workspace <<<"$found"
+hyprctl dispatch "hl.dsp.focus({ window = \"address:$address\" })" >/dev/null 2>&1 ||
+  hyprctl dispatch focuswindow "address:$address" >/dev/null 2>&1
+# The bar's workspace numbers blink the one it is on (a special workspace has
+# no number, and the bar says nothing about it).
+if [ "$workspace" -gt 0 ] 2>/dev/null; then
+  omarchy-shell -q vetro.workspaces blink "$workspace"
+fi

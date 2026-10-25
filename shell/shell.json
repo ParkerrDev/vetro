@@ -1,0 +1,10 @@
+{
+  "gaps": { "edge": 5, "sides": 5 },
+  "bar": { "radius": 15 },
+  "panels": { "radius": 20, "opacity": 0.2, "frame": false, "frameWidth": 1 },
+  "text": { "size": 10, "nativeRendering": false },
+  "clock": { "twelveHour": false },
+  "osd": { "timeout": 700 },
+  "motion": { "scale": 1, "bounce": 0.5 },
+  "screens": { "only": [], "except": [] }
+}

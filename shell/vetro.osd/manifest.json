@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "vetro.osd",
+  "name": "Vetro on-screen display",
+  "version": "1.0.0",
+  "author": "ParkerrDev",
+  "description": "A capsule of glass under the bar with the volume, the brightness or a message, in place of Omarchy's display",
+  "kinds": [
+    "panel"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "panel": "Osd.qml"
+  },
+  "omarchy": {
+    "clonedFrom": "omarchy.osd"
+  }
+}

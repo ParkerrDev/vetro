@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "vetro.menu",
+  "name": "Vetro menu",
+  "version": "1.0.0",
+  "author": "ParkerrDev",
+  "description": "Omarchy's menu, unchanged but for a calculator: type a sum and the answer is the first row (Enter copies it)",
+  "kinds": [
+    "menu",
+    "bar-widget"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "menu": "Menu.qml",
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Vetro menu",
+    "description": "Launches the Omarchy menu",
+    "category": "Compositor",
+    "allowMultiple": false
+  },
+  "omarchy": {
+    "clonedFrom": "omarchy.menu"
+  }
+}

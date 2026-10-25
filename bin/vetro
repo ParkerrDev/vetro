@@ -1,0 +1,293 @@
+#!/bin/bash
+# vetro: liquid glass over Omarchy, off and on again.
+#
+#   vetro on                lay the glass and Vetro's own colours over the
+#                           theme and wallpaper you have
+#   vetro off               take them off again: Omarchy as it ships, with the
+#                           theme and wallpaper you chose, untouched
+#   vetro toggle            whichever it isn't
+#   vetro status            on or off, how the engine and the guard stand,
+#                           and the browser's colour
+#   vetro glass load        the glass engine into the running Hyprland, and
+#                           the browser grey again (a change of theme gives it
+#                           the theme's colour); on, login and every change of
+#                           theme do this themselves
+#   vetro glass unload      the engine out of it, as off does
+#   vetro glass look [NAME] which glass the panes and windows are: apple
+#                           (as it comes: Apple's own glass shader, tuned as
+#                           `vetro tune` leaves it, the Author's pick until then),
+#                           lens (the lens of 18 October: a light blur, a
+#                           bezel that bends what is behind, a dark tint,
+#                           colour and a lit rim), macos
+#                           (the shader as transcribed from macOS 27, with
+#                           Apple's own recipe), liquid (the bar,
+#                           widgets and panels Apple's current material
+#                           without its white, windows toned and frosted),
+#                           regular (toned and frosted, the panes too), cloud
+#                           (Apple's material as it was measured on windows
+#                           too: soft and pale), clear (what is behind only a
+#                           little out of focus) or sharp (nothing out of
+#                           focus). With no name, says which it is
+#   vetro tune              the window where the glass is tuned by hand: clear
+#                           or tinted, frost, colour, lens, edge and light, and
+#                           the earlier looks (apps/glass); it writes
+#                           ~/.config/vetro/glass.conf, which the engine reads
+#   vetro build [--force]   build the engine for the Hyprland that is installed
+#   vetro doctor            check the installation and say what is wrong
+#
+# Vetro is not a theme and never sets one. A change of theme or wallpaper
+# leaves it where it is, and the colours it lays (override/README.md) win over
+# the theme's until it is switched off. Off undoes what on laid in your home
+# folder and leaves the files themselves linked, so on is quick. Outside the
+# home folder there is one thing: the browser's colour, which Omarchy keeps in
+# the browsers' policy and which Vetro sets through Omarchy's own helper, as a
+# change of theme does (lib/lay.sh, "browser"). What neither touches: packages,
+# and the login screen (addons/login).
+
+# shellcheck source-path=SCRIPTDIR
+set -euo pipefail
+
+HERE=$(dirname "$(readlink -f "$0")")
+ROOT=$(cd "$HERE/.." && pwd -P)
+# shellcheck source=../lib/common.sh
+. "$ROOT/lib/common.sh"
+# shellcheck source=../lib/lay.sh
+. "$ROOT/lib/lay.sh"
+# shellcheck source=../lib/doctor.sh
+. "$ROOT/lib/doctor.sh"
+
+usage() {
+  awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"
+}
+
+# On means not switched off. It does not depend on the theme: the glass and
+# the colours lie over whatever theme and wallpaper are chosen, and stay until
+# `vetro off`.
+is_on() { [ ! -e "$FLAG" ]; }
+
+in_hyprland() { [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; }
+
+need_installed() {
+  [ -e "$CONFIG/hypr/vetro.lua" ] || die "Vetro is not installed for this user: run $ROOT/install.sh"
+}
+
+# ------------------------------------------------------------ the engine ----
+
+# The glass engine is the hyprglass plugin, if one was built for the Hyprland
+# that is running (engine/build.sh leaves it in $ENGINE_DIR, with that
+# Hyprland's commit beside it). With it the panes are real glass; without it
+# they are blurred, as plain blur always did.
+#
+# It is loaded from here and never by Hyprland's config: Hyprland reads its
+# config again each time a plugin is loaded, so a config that loads one is read
+# again, loads it again, and does not stop. As a second guard, hypr/vetro.lua
+# counts its own readings and stands down past twelve in ten seconds.
+GUARD_MARK=${XDG_RUNTIME_DIR:-/nonexistent}/vetro-glass-stood-down
+GUARD_TALLY=${XDG_RUNTIME_DIR:-/nonexistent}/vetro-glass-readings
+
+glass_fits() {
+  local built running
+  built=$(sed -n 1p "$ENGINE_DIR/hyprglass.built-for" 2>/dev/null || true)
+  running=$(hyprctl version -j 2>/dev/null | jq -r '.commit // empty' 2>/dev/null || true)
+  [ -n "$built" ] && [ "$built" = "$running" ]
+}
+
+glass_loaded() { hyprctl plugin list 2>/dev/null | grep -qi '^Plugin hyprglass'; }
+
+# The glass draws when the engine is in Hyprland and the config has not stood
+# down from being read in a loop.
+glass_draws() { glass_loaded && [ ! -e "$GUARD_MARK" ]; }
+
+# Asking for Vetro again gives the glass another go after the config stood
+# down.
+reset_guard() {
+  [ -n "${XDG_RUNTIME_DIR:-}" ] || return 0
+  rm -f "$GUARD_MARK" "$GUARD_TALLY"
+}
+
+# Omarchy's cards follow the glass. On glass they are a thin film and the dim
+# behind a menu is faint (override/glass.toml); on plain blur they are the dark
+# cards of the theme. So the film is written when the glass draws and taken
+# away whenever it does not, and is never left behind on blur.
+glass_cards() {
+  case $1 in
+    on)
+      [ -r "$ROOT/override/glass.toml" ] || return 0
+      overlay "$ROOT/override/glass.toml" | block_put "$SHELL_TOML" "$GLASS_BEGIN" "$GLASS_END"
+      ;;
+    off) block_drop "$SHELL_TOML" "$GLASS_BEGIN" "$GLASS_END" ;;
+  esac
+}
+
+# Which glass the panes and windows are. hypr/vetro.lua reads it from which
+# of these files is in ~/.config/vetro, a later one in this list before an
+# earlier; Apple's own glass, as it comes, is none of them.
+LOOKS=(macos lens liquid regular sharp clear cloud)
+
+glass_look() {
+  local wanted=${1:-} look now=apple
+  for look in "${LOOKS[@]}"; do
+    if [ -e "$CONFIG/vetro/$look-material" ]; then now=$look; fi
+  done
+  case $wanted in
+    "") echo "$now" ;;
+    apple | macos | lens | liquid | regular | sharp | clear | cloud)
+      mkdir -p "$CONFIG/vetro"
+      # first-material is a file an earlier version left, for what is now
+      # the regular glass.
+      for look in "${LOOKS[@]}" first; do rm -f "$CONFIG/vetro/$look-material"; done
+      [ "$wanted" = apple ] || : >"$CONFIG/vetro/$wanted-material"
+      # The engine is told its numbers when Hyprland reads the look again.
+      if in_hyprland; then hyprctl reload >/dev/null || true; fi
+      echo "$wanted"
+      ;;
+    *) die "there is no glass called $wanted: apple, lens, macos, liquid, regular, cloud, clear or sharp" ;;
+  esac
+}
+
+glass() {
+  case ${1:-} in
+    look) glass_look "${2:-}" ;;
+    load)
+      if in_hyprland && [ -s "$ENGINE" ] && is_on && glass_fits; then
+        glass_loaded || hyprctl plugin load "$ENGINE" >/dev/null || true
+      fi
+      if is_on && in_hyprland && glass_draws; then glass_cards on; else glass_cards off; fi
+      if is_on; then lay_browser; fi
+      ;;
+    unload)
+      # The film first, and whether or not Hyprland can be reached: light
+      # cards with nothing behind them are the worse thing to leave.
+      glass_cards off
+      if in_hyprland && glass_loaded; then
+        hyprctl plugin unload "$ENGINE" >/dev/null 2>&1 ||
+          warn "the engine could not be unloaded from here (it was loaded from another place); it goes at the next login"
+      fi
+      ;;
+    *)
+      usage
+      exit 2
+      ;;
+  esac
+}
+
+build() {
+  exec "$ROOT/engine/build.sh" "$@"
+}
+
+# The tuning window, built first when its sources, style, artwork or the
+# engine's library have changed.
+tune() {
+  local app="$ROOT/apps/glass/vetro-glass"
+  if ! make -s -q -C "$ROOT/apps/glass"; then
+    make -s -C "$ROOT/apps/glass" >/dev/null || die "the glass window could not be built: make -C $ROOT/apps/glass"
+  fi
+  exec "$app" "$@"
+}
+
+# ------------------------------------------------------------- on and off ----
+
+# The cursor is part of the look when its theme is installed: naming one that
+# is not there would lose Omarchy's own.
+cursor_theme_installed() {
+  [ -e "/usr/share/icons/XCursor-Pro-Hyprcursor-Dark" ] || [ -e "$HOME/.local/share/icons/XCursor-Pro-Hyprcursor-Dark" ]
+}
+
+# Hyprland reads its config again, and the shell starts afresh: it reads its
+# fonts only at start, and the plugins' icons are a font.
+reload_session() {
+  in_hyprland || return 0
+  hyprctl reload >/dev/null || true
+  omarchy-restart-shell >/dev/null 2>&1 || true
+}
+
+on() {
+  need_installed
+  rm -f "$FLAG"
+  # Before the config is read again below, or it would be read as still in a
+  # loop and leave the glass unset until the next reading.
+  reset_guard
+  lay_blocks
+  lay_apps >/dev/null
+  lay_plugins
+  lay_addons
+  reload_session
+  glass load
+  if in_hyprland && cursor_theme_installed; then
+    hyprctl setcursor XCursor-Pro-Hyprcursor-Dark 24 >/dev/null 2>&1 || true
+  fi
+  notify-send -t 4000 "Vetro on" "vetro off switches back to Omarchy's defaults." 2>/dev/null || true
+}
+
+off() {
+  glass unload
+  mkdir -p "$STATE"
+  touch "$FLAG" # hypr/vetro.lua stands down while this exists
+  # Before the plugins go: the video wallpaper stops before Omarchy's own
+  # background comes back over it.
+  unlay_addons
+  unlay_blocks
+  unlay_apps
+  unlay_plugins
+  # No theme is set: yours stays. Vetro's colours were laid over it, not
+  # chosen in its place.
+  if in_hyprland; then
+    hyprctl reload >/dev/null || true
+    hyprctl setcursor default 24 >/dev/null 2>&1 || true
+    omarchy-restart-shell >/dev/null 2>&1 || true
+  fi
+  omarchy-notification-send "Vetro off" "Omarchy's defaults. vetro on brings it back." -t 4000 2>/dev/null || true
+}
+
+status() {
+  local theme built
+  if is_on; then echo on; else echo off; fi
+  if [ ! -s "$ENGINE" ]; then
+    echo "engine: not built (vetro build)"
+  elif ! in_hyprland; then
+    echo "engine: built, not asked (no Hyprland session here)"
+  elif ! glass_fits; then
+    built=$(sed -n 2p "$ENGINE_DIR/hyprglass.built-for" 2>/dev/null || true)
+    echo "engine: built for Hyprland ${built:-?}, not for the one running (vetro build)"
+  elif glass_loaded; then
+    echo "engine: loaded"
+  else
+    echo "engine: built, not loaded (vetro glass load)"
+  fi
+  if [ -e "$GUARD_MARK" ]; then
+    echo "guard: stood down ($(sed -n 1p "$GUARD_MARK")); vetro on gives the glass another go"
+  else
+    echo "guard: ready"
+  fi
+  theme=$(cat "$HOME/.local/state/omarchy/current/theme.name" 2>/dev/null || true)
+  echo "theme: ${theme:-unknown} (yours; Vetro never sets one)"
+  if [ -z "$(browser_colours)" ]; then
+    echo "browser: no colour set"
+  elif browser_is "$BROWSER_GREY"; then
+    echo "browser: grey, the glass's"
+  else
+    echo "browser: $(browser_colours | sort -u | tr '\n' ' ' | sed 's/ $//'), not the glass's grey"
+  fi
+}
+
+case ${1:-status} in
+  on) on ;;
+  off) off ;;
+  toggle) if is_on; then off; else on; fi ;;
+  status) status ;;
+  glass) glass "${2:-}" "${3:-}" ;;
+  build)
+    shift
+    build "$@"
+    ;;
+  doctor) doctor ;;
+  tune)
+    shift
+    tune "$@"
+    ;;
+  -h | --help | help) usage ;;
+  *)
+    usage >&2
+    exit 2
+    ;;
+esac

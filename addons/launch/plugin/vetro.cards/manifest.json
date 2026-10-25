@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "vetro.cards",
+  "name": "Vetro launch cards",
+  "version": "1.0.0",
+  "author": "ParkerrDev",
+  "description": "The next-launch card and the weather card over the wallpaper, part of the launch addon",
+  "kinds": [
+    "panel"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "panel": "Panels.qml"
+  }
+}

@@ -1,0 +1,13 @@
+[Unit]
+Description=Vetro launch data (SpaceX launches for the launch card)
+
+# Started by Hyprland (hypr/vetro.lua restarts it at login) once the session
+# environment is imported, and by `vetro on`. It sleeps until the next fetch
+# is due or a request comes.
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/vetro-launchd
+Restart=on-failure
+RestartSec=5
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin
+Nice=5

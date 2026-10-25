@@ -1,0 +1,102 @@
+#pragma once
+
+#include <GLES3/gl32.h>
+#include <hyprland/src/render/Shader.hpp>
+#include <string>
+
+struct SGlassUniforms {
+    GLint refractionStrength = -1;
+    GLint noiseStrength = -1;
+    GLint chromaticAberration = -1;
+    GLint fresnelStrength = -1;
+    GLint specularStrength = -1;
+    GLint glassOpacity = -1;
+    GLint edgeThickness = -1;
+    GLint invBezelWidthPx = -1;
+    GLint uvPadding = -1;
+    GLint tintColor = -1;
+    GLint tintAlpha = -1;
+    GLint lensDistortion = -1;
+    GLint lensMaxPx = -1;
+    GLint saturation = -1;
+    GLint vibrancyDarkness = -1;
+    GLint adaptiveDim = -1;
+    GLint adaptiveBoost = -1;
+    GLint tonePeakAt = -1;
+    GLint tonePeak = -1;
+    GLint refractionFlow = -1;
+    GLint refractionSpread = -1;
+    GLint fresnelTint = -1;
+    GLint bevelStrength = -1;
+    GLint bevelSize = -1;
+    GLint monitorScale = -1;
+    GLint fresnelColor = -1;
+    GLint fresnelColorAlpha = -1;
+    GLint bevelColor = -1;
+    GLint bevelColorAlpha = -1;
+    GLint bevelTint = -1;
+    GLint bevelAngle = -1;
+    GLint bevelShadow = -1;
+    GLint specularAngle = -1;
+    GLint invFullSize = -1;
+    GLint invRoundingPower = -1;
+    GLint radii = -1; // per-corner radius: top-left, top-right, bottom-right, bottom-left
+
+    // Layers only: temp FBO surface mask for content-aware glass
+    GLint maskTex = -1;
+    GLint useMask = -1;
+    GLint maskUVOffset = -1;
+    GLint maskUVScale = -1;
+    GLint maskAlphaThreshold = -1;
+    GLint maskCoverage = -1;
+    GLint maskMode = -1;
+    GLint regionRectCount = -1;
+    GLint regionRects = -1;
+    GLint sampleUVOffset = -1;
+    GLint sampleUVScale = -1;
+
+    // Subsurface item glass only: glass-box sub-rect the SDF is measured
+    // against, in box-local pixels (see Shaders.hpp).
+    GLint glassBoxOffsetPx = -1;
+    GLint glassBoxSizePx = -1;
+
+    // The current material on a window's pane (see Shaders.hpp).
+    GLint layered = -1;
+    GLint cloudTex = -1;
+    GLint lFrost = -1;
+    GLint lTone = -1;
+    GLint lTint = -1;
+    GLint lRim = -1;
+    GLint lLens = -1;
+    GLint lLight = -1;
+    GLint lK = -1;
+};
+
+struct SBlurUniforms {
+    GLint direction = -1;
+    GLint radius    = -1;
+};
+
+class CShaderManager {
+  public:
+    [[nodiscard]] bool isInitialized() const noexcept { return m_initialized; }
+    // The last compile attempt failed; it is retried at the next glass draw.
+    [[nodiscard]] bool compileFailed() const noexcept { return m_compileFailed; }
+
+    void initializeIfNeeded();
+    void destroy() noexcept;
+
+    SP<CShader>    glassShader = makeShared<CShader>();
+    SGlassUniforms glassUniforms;
+
+    SP<CShader>    blurShader = makeShared<CShader>();
+    SBlurUniforms  blurUniforms;
+
+  private:
+    bool m_initialized = false;
+    bool m_compileFailed = false;
+
+    [[nodiscard]] static std::string loadShaderSource(const char* fileName);
+    [[nodiscard]] bool compileGlassShader();
+    [[nodiscard]] bool compileBlurShader();
+};

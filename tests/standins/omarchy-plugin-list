@@ -1,0 +1,3 @@
+#!/bin/bash
+# Stand-in for omarchy-plugin-list --json.
+exec omarchy-shell shell listPlugins

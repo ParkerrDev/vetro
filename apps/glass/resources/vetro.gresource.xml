@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gresources>
+  <gresource prefix="/dev/vetro/Glass">
+    <file>style.css</file>
+    <file alias="icons/scalable/apps/dev.vetro.Glass.svg">vetro.svg</file>
+    <file alias="icons/symbolic/apps/dev.vetro.Glass-symbolic.svg">vetro-symbolic.svg</file>
+  </gresource>
+</gresources>

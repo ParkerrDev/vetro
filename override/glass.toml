@@ -1,0 +1,100 @@
+# Omarchy's own surfaces while the panes are real glass, whatever theme is
+# chosen. The glass is not a theme: it lies over the theme, and a theme's
+# colours for the bar, cards, menus and controls would only tint it, so every
+# one of them is set here and the theme's are overridden until the glass is
+# switched off (`vetro off`, or `vetro glass unload`). This file covers the
+# shell's own surfaces; the GTK and Qt colours are laid by `vetro on` from the
+# other folders here, and the terminal's colours and the wallpaper stay the
+# theme's.
+#
+# The glass does the frosting and the darkening, so a card is a thin film over
+# it, and the same film on every surface: a fifth of black, the same as over
+# the bar, the widgets and every window (2026-10-18: "they all should be
+# unified"). A card on a dim is filled so that with the dim under it it comes
+# to that fifth too (0.1 and 0.12 make 0.208). The dim is light enough to stay
+# out of the glass (hypr/vetro.lua cuts the glass between the two). And no
+# surface draws an outline of its own: the glass's own rim is the edge.
+#
+# `vetro glass load` copies this, without its comments, into the marked block
+# of ~/.config/omarchy/shell.toml, which Omarchy's shell reads over the theme;
+# `vetro glass unload` takes the block out. The bar's own background colour is
+# here too, because the pane that vetro.barglass draws behind the bar takes
+# its colour from it.
+[bar]
+background = "#000000"
+text       = "#ffffff"
+active     = "#ffffff"
+
+[controls]
+normal-color        = "#ffffff"
+normal-fill-alpha   = 0.06
+normal-border       = "#ffffff"
+normal-border-width = 1
+normal-border-alpha = 0.24
+hover-cursor-color        = "#ffffff"
+hover-cursor-fill-alpha   = 0.1
+hover-cursor-border       = "#ffffff"
+hover-cursor-border-width = 1
+hover-cursor-border-alpha = 0.5
+focus-color        = "#ffffff"
+focus-fill-alpha   = 0.1
+focus-border       = "#ffffff"
+focus-border-width = 1
+focus-border-alpha = 0.5
+selected-color        = "#ffffff"
+selected-fill-alpha   = 0.18
+selected-border       = "#ffffff"
+selected-border-width = 0
+selected-border-alpha = 1.0
+pressed-fill-alpha   = 0.25
+selection-fill-alpha = 0.35
+
+[popups]
+background       = "#000000"
+background-alpha = 0.2
+text             = "#ffffff"
+border           = "#ffffff"
+border-alpha     = 0
+border-width     = 0
+
+[tooltip]
+background       = "#000000"
+background-alpha = 0.8
+text             = "#ffffff"
+border           = "#ffffff"
+border-alpha     = 0.24
+
+[notifications]
+background       = "#000000"
+background-alpha = 0.2
+text             = "#ffffff"
+border           = "#ffffff"
+border-alpha     = 0
+border-width     = 0
+countdown        = "#ffffff"
+
+[menu]
+background                = "#000000"
+background-alpha          = 0.12
+text                      = "#ffffff"
+border                    = "#ffffff"
+border-alpha              = 0
+scrim                     = "#000000"
+scrim-alpha               = 0.1
+selected-background       = "#ffffff"
+selected-background-alpha = 0.1
+selected-text             = "#ffffff"
+selected-border           = "#ffffff"
+selected-border-alpha     = 0.35
+
+[polkit]
+background       = "#000000"
+background-alpha = 0.12
+text             = "#ffffff"
+text-error       = "#ffffff"
+border           = "#ffffff"
+border-error     = "#ffffff"
+border-alpha     = 0
+scrim            = "#000000"
+scrim-alpha      = 0.1
+accent           = "#ffffff"

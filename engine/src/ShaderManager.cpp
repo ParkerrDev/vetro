@@ -1,0 +1,132 @@
+#include "ShaderManager.hpp"
+#include "Globals.hpp"
+#include "Shaders.hpp"
+
+#include <GLES3/gl32.h>
+#include <hyprland/src/helpers/Color.hpp>
+#include <hyprland/src/plugins/PluginAPI.hpp>
+#include <hyprland/src/render/OpenGL.hpp>
+
+std::string CShaderManager::loadShaderSource(const char* fileName) {
+    if (SHADERS.contains(fileName))
+        return SHADERS.at(fileName);
+
+    const std::string message = std::format("[{}] Failed to load shader: {}", PLUGIN_NAME, fileName);
+    HyprlandAPI::addNotification(PHANDLE, message, CHyprColor{1.0, 0.2, 0.2, 1.0}, 5000);
+    throw std::runtime_error(message);
+}
+
+bool CShaderManager::compileGlassShader() {
+    if (!glassShader->createProgram(
+            g_pHyprOpenGL->m_shaders->TEXVERTSRC,
+            loadShaderSource("liquidglass.frag"),
+            true
+        )) {
+        HyprlandAPI::addNotification(PHANDLE,
+            std::format("[{}] Failed to compile glass shader", PLUGIN_NAME),
+            CHyprColor{1.0, 0.2, 0.2, 1.0}, 5000);
+        return false;
+    }
+
+    const auto program = glassShader->program();
+
+    glassUniforms.refractionStrength  = glGetUniformLocation(program, "refractionStrength");
+    glassUniforms.noiseStrength       = glGetUniformLocation(program, "noiseStrength");
+    glassUniforms.chromaticAberration = glGetUniformLocation(program, "chromaticAberration");
+    glassUniforms.fresnelStrength     = glGetUniformLocation(program, "fresnelStrength");
+    glassUniforms.specularStrength    = glGetUniformLocation(program, "specularStrength");
+    glassUniforms.glassOpacity        = glGetUniformLocation(program, "glassOpacity");
+    glassUniforms.edgeThickness       = glGetUniformLocation(program, "edgeThickness");
+    glassUniforms.invBezelWidthPx     = glGetUniformLocation(program, "invBezelWidthPx");
+    glassUniforms.uvPadding           = glGetUniformLocation(program, "uvPadding");
+    glassUniforms.tintColor           = glGetUniformLocation(program, "tintColor");
+    glassUniforms.tintAlpha           = glGetUniformLocation(program, "tintAlpha");
+    glassUniforms.lensDistortion      = glGetUniformLocation(program, "lensDistortion");
+    glassUniforms.lensMaxPx           = glGetUniformLocation(program, "lensMaxPx");
+    glassUniforms.saturation          = glGetUniformLocation(program, "saturation");
+    glassUniforms.vibrancyDarkness    = glGetUniformLocation(program, "vibrancyDarkness");
+    glassUniforms.adaptiveDim         = glGetUniformLocation(program, "adaptiveDim");
+    glassUniforms.adaptiveBoost       = glGetUniformLocation(program, "adaptiveBoost");
+    glassUniforms.tonePeakAt          = glGetUniformLocation(program, "tonePeakAt");
+    glassUniforms.tonePeak            = glGetUniformLocation(program, "tonePeak");
+    glassUniforms.refractionFlow      = glGetUniformLocation(program, "refractionFlow");
+    glassUniforms.refractionSpread    = glGetUniformLocation(program, "refractionSpread");
+    glassUniforms.fresnelTint         = glGetUniformLocation(program, "fresnelTint");
+    glassUniforms.bevelStrength       = glGetUniformLocation(program, "bevelStrength");
+    glassUniforms.bevelSize           = glGetUniformLocation(program, "bevelSize");
+    glassUniforms.monitorScale        = glGetUniformLocation(program, "monitorScale");
+    glassUniforms.fresnelColor        = glGetUniformLocation(program, "fresnelColor");
+    glassUniforms.fresnelColorAlpha   = glGetUniformLocation(program, "fresnelColorAlpha");
+    glassUniforms.bevelColor          = glGetUniformLocation(program, "bevelColor");
+    glassUniforms.bevelColorAlpha     = glGetUniformLocation(program, "bevelColorAlpha");
+    glassUniforms.bevelTint           = glGetUniformLocation(program, "bevelTint");
+    glassUniforms.bevelAngle          = glGetUniformLocation(program, "bevelAngle");
+    glassUniforms.bevelShadow         = glGetUniformLocation(program, "bevelShadow");
+    glassUniforms.specularAngle       = glGetUniformLocation(program, "specularAngle");
+    glassUniforms.invFullSize         = glGetUniformLocation(program, "invFullSize");
+    glassUniforms.invRoundingPower    = glGetUniformLocation(program, "invRoundingPower");
+    glassUniforms.radii               = glGetUniformLocation(program, "radii");
+    glassUniforms.maskTex             = glGetUniformLocation(program, "maskTex");
+    glassUniforms.useMask             = glGetUniformLocation(program, "useMask");
+    glassUniforms.maskUVOffset        = glGetUniformLocation(program, "maskUVOffset");
+    glassUniforms.maskUVScale         = glGetUniformLocation(program, "maskUVScale");
+    glassUniforms.maskAlphaThreshold  = glGetUniformLocation(program, "maskAlphaThreshold");
+    glassUniforms.maskCoverage        = glGetUniformLocation(program, "maskCoverage");
+    glassUniforms.maskMode            = glGetUniformLocation(program, "maskMode");
+    glassUniforms.regionRectCount     = glGetUniformLocation(program, "regionRectCount");
+    glassUniforms.regionRects         = glGetUniformLocation(program, "regionRects[0]");
+    if (glassUniforms.regionRects == -1)
+        glassUniforms.regionRects = glGetUniformLocation(program, "regionRects");
+    glassUniforms.sampleUVOffset      = glGetUniformLocation(program, "sampleUVOffset");
+    glassUniforms.sampleUVScale       = glGetUniformLocation(program, "sampleUVScale");
+    glassUniforms.layered             = glGetUniformLocation(program, "layered");
+    glassUniforms.cloudTex            = glGetUniformLocation(program, "cloudTex");
+    glassUniforms.lFrost              = glGetUniformLocation(program, "lFrost");
+    glassUniforms.lTone               = glGetUniformLocation(program, "lTone");
+    glassUniforms.lTint               = glGetUniformLocation(program, "lTint");
+    glassUniforms.lRim                = glGetUniformLocation(program, "lRim");
+    glassUniforms.lLens               = glGetUniformLocation(program, "lLens");
+    glassUniforms.lLight              = glGetUniformLocation(program, "lLight");
+    glassUniforms.lK                  = glGetUniformLocation(program, "lK[0]");
+    if (glassUniforms.lK == -1)
+        glassUniforms.lK = glGetUniformLocation(program, "lK");
+    glassUniforms.glassBoxOffsetPx    = glGetUniformLocation(program, "glassBoxOffsetPx");
+    glassUniforms.glassBoxSizePx      = glGetUniformLocation(program, "glassBoxSizePx");
+
+    return true;
+}
+
+bool CShaderManager::compileBlurShader() {
+    if (!blurShader->createProgram(
+            g_pHyprOpenGL->m_shaders->TEXVERTSRC,
+            loadShaderSource("gaussianblur.frag"),
+            true
+        )) {
+        HyprlandAPI::addNotification(PHANDLE,
+            std::format("[{}] Failed to compile blur shader", PLUGIN_NAME),
+            CHyprColor{1.0, 0.2, 0.2, 1.0}, 5000);
+        return false;
+    }
+
+    const auto program = blurShader->program();
+
+    blurUniforms.direction = glGetUniformLocation(program, "direction");
+    blurUniforms.radius    = glGetUniformLocation(program, "blurRadius");
+
+    return true;
+}
+
+void CShaderManager::initializeIfNeeded() {
+    if (m_initialized)
+        return;
+
+    m_initialized   = compileGlassShader() && compileBlurShader();
+    m_compileFailed = !m_initialized;
+}
+
+void CShaderManager::destroy() noexcept {
+    glassShader->destroy();
+    blurShader->destroy();
+    m_initialized   = false;
+    m_compileFailed = false;
+}

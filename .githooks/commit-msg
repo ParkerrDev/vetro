@@ -1,0 +1,13 @@
+#!/bin/bash
+# A commit message carries no em-dash and no credit to an AI assistant.
+set -uo pipefail
+message=$1
+# The em-dash and the en-dash, spelled as bytes so this file has neither.
+if grep -nE "$(printf '\342\200\224|\342\200\223')" "$message"; then
+  echo "commit-msg: the message has an em-dash or en-dash in it" >&2
+  exit 1
+fi
+if grep -niE '^[[:space:]]*(co-authored-by:.*(claude|anthropic|copilot|openai|codex|gemini|cursor)|claude-session:)|generated with \[?claude code' "$message"; then
+  echo "commit-msg: the message credits an AI assistant" >&2
+  exit 1
+fi

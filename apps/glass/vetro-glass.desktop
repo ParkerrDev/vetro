@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Vetro Glass
+GenericName=Liquid glass settings
+Comment=Tune the liquid glass: clear or tinted, frost, colour, lens and light
+Exec=vetro tune
+Icon=dev.vetro.Glass
+Terminal=false
+Categories=Settings;DesktopSettings;GTK;
+Keywords=glass;liquid;blur;transparency;tint;frost;vetro;
+StartupWMClass=dev.vetro.Glass

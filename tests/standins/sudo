@@ -1,0 +1,15 @@
+#!/bin/bash
+# Stand-in for sudo. It answers only the question Vetro asks of it, whether
+# Omarchy's browser helper runs without a password (yes, unless
+# $STANDIN_STATE/no-sudo-rule exists), and refuses anything else: nothing of
+# Vetro's runs a command as root.
+S=${STANDIN_STATE:?STANDIN_STATE is not set}
+mkdir -p "$S"
+echo "sudo $*" >>"$S/log"
+if [ "${1:-} ${2:-} ${3:-} ${4:-}" = "-n -l -l /usr/bin/omarchy-theme-set-browser-policy" ]; then
+  [ -e "$S/no-sudo-rule" ] && exit 1
+  printf 'Sudoers entry: /etc/sudoers.d/omarchy-theme-browser\n    Options: !authenticate\n    Commands:\n\t%s\n' "$4"
+  exit 0
+fi
+echo "sudo: a password is required" >&2
+exit 1

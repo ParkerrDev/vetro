@@ -1,0 +1,104 @@
+HyprGlass is distributed under the BSD 3-Clause license (LICENSE). The
+following notices belong to numbers and laws that the model in
+crates/glass-core takes from other projects, each cited by file and line where
+it is used. Only constants and published formulas are taken, as data and in
+this project's own words, never source files, with one exception, named as
+such below: crates/glass-core/shaders/quartz27.frag is adapted from a shader
+of liquid-glass-react-native.
+
+Glass HQ, liquid-glass (https://github.com/Glass-HQ/liquid-glass), MIT:
+  Copyright (c) 2026 Glass HQ
+  used in: motion (the named springs, the closed-form spring and its
+  retargeting, the stretch and squash of the selector and of controls, the
+  rubber band, press growth: core/spring.ts, dom/selection.ts,
+  dom/control-motion.ts, dom/interaction.ts) and shape (the smooth union and
+  the neck law: core/union.ts, core/morph-path.ts)
+
+liquid_glass_widgets (https://github.com/sdegenaar/liquid_glass_widgets), MIT:
+  Copyright (c) 2024-2026 Sebastian Degenaar
+  with the notices it keeps for the works it is derived from:
+  Copyright 2025 Tim Lehmann for whynotmake.it (liquid_glass_renderer)
+  Copyright (c) 2024 Tim Lehmann for whynotmake.it (motor)
+  used in: material (the G27 column: liquid_glass_settings.dart,
+  liquid_glass_render.frag), shape (the continuous corner: sdf.glsl)
+
+liquid-dom (https://github.com/AndrewPrifer/liquid-dom), MIT:
+  Copyright (c) 2026 Andras Prifer
+  used in: shape (the angle gate of the smooth union, the simpler corner
+  exponent: shaders.ts)
+
+liquid-glass-react-native (https://github.com/medfa12/liquid-glass-react-native), MIT:
+  Copyright (c) 2026 liquid-glass contributors
+  used in: shaders/quartz27.frag, adapted from src/liquid_glass_27.glsl (its
+  transcription of macOS 27's glass_background_all_lpf: the uniform block, the
+  stages and their order), and quartz (the presets: src/params.ts, the fitted
+  regular panel; src/glass.ts, Apple's platformContentGlass recipe with its
+  measured dark bias, and the clear style's decoded matrix)
+  Changes: the shape comes from a distance field of the layer's outline and
+  not a superellipse; the page is a copy with a mip chain in this engine's
+  coordinates; the key and fill stage is replaced by gpui-glass-demo's decoding
+  (below); the bright layer and the dark rim are added; the output is
+  premultiplied and ends where the layer drew.
+
+MIT License, for the five works above:
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+
+AndroidLiquidGlass (https://github.com/Kyant0/AndroidLiquidGlass), Apache
+License 2.0 (LICENSES/Apache-2.0.txt):
+  Copyright 2025 Kyant
+  used in: motion (the thumb lens: blur, refraction height and amount,
+  highlight, inner shadow and press scale of a slider, a toggle and a tab bar:
+  LiquidSlider.kt, LiquidToggle.kt, LiquidBottomTabs.kt)
+  Changes: none to any file of that project; its numbers are used as data.
+
+gpui-glass-demo (https://github.com/luciascarlet/gpui-glass-demo), BSD 3-Clause:
+  Copyright (c) 2026, GPUI glass contributors
+  used in: shaders/quartz27.frag (macOS 27's key and fill light as decoded
+  from QuartzCore 26A428 in its RESEARCH.md: the rational lobes, the radial
+  band, the host's conversions of amount, spread and angle, the values an
+  NSGlassEffectView sets in the dark appearance, vibrantColorMatrix, and the
+  blur fill's radius and darken weight), and quartz (the macos27 preset)
+  Changes: none to any file of that project; its decoded formulas and values
+  are written here in this project's own words.
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+  1. Redistributions of source code must retain the above copyright notice,
+     this list of conditions and the following disclaimer.
+  2. Redistributions in binary form must reproduce the above copyright notice,
+     this list of conditions and the following disclaimer in the documentation
+     and/or other materials provided with the distribution.
+  3. Neither the name of the copyright holder nor the names of its
+     contributors may be used to endorse or promote products derived from
+     this software without specific prior written permission.
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+  LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+  CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+  SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+  INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+  CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+  POSSIBILITY OF SUCH DAMAGE.
+
+Nothing is taken from kube.io, spoti.pw or ybouane's liquidglass: their
+licences allow ideas only, and ideas are all that was read there.

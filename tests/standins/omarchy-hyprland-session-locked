@@ -1,0 +1,5 @@
+#!/bin/bash
+# Stand-in: the screen is locked when the test has said so (a file named
+# "locked" in the stand-ins' folder), and is not otherwise.
+S=${STANDIN_STATE:?STANDIN_STATE is not set}
+[ -e "$S/locked" ]

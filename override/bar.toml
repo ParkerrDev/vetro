@@ -1,0 +1,10 @@
+# Omarchy's bar sits in Vetro's rounded pane, which the vetro.barglass plugin
+# draws behind it. So the bar has no background of its own, and it leaves room
+# round the pane: the pane's 30 pixels plus 5 at each end. `vetro on` copies
+# this, without its comments, into the marked block of
+# ~/.config/omarchy/shell.toml (the layer that is yours over every theme, and
+# where `omarchy display text size` writes too); `vetro off` takes it out.
+[bar]
+background-alpha = 0
+size-horizontal  = 40
+size-vertical    = 40

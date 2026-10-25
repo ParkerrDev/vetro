@@ -1,0 +1,5 @@
+#!/bin/bash
+# Stand-in: it writes down that it was run, and does nothing else.
+S=${STANDIN_STATE:?STANDIN_STATE is not set}
+mkdir -p "$S"
+echo "${0##*/} $*" >>"$S/log"

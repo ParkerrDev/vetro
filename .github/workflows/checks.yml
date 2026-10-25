@@ -1,0 +1,28 @@
+# The checks a commit has to pass, on a plain Arch Linux: the text check, then
+# scripts/check-repo with the engine's and the daemons' own tests. They run as
+# a user of their own, since the installers refuse to run as root.
+name: checks
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Tools
+        run: |
+          pacman -Syu --noconfirm --needed git base-devel shellcheck lua jq python rust cargo-deny glslang qt6-declarative
+          useradd -m checker
+      - uses: actions/checkout@v4
+      - name: Hand the checkout to the user
+        run: chown -R checker "$GITHUB_WORKSPACE"
+      - name: Text
+        run: su checker -c 'git config --global --add safe.directory "*" && scripts/check-text'
+      - name: Checks and tests
+        run: su checker -c 'VETRO_TEST_ENGINE=1 scripts/check-repo'
+      - name: Engine (format, clippy, docs, dependency policy)
+        run: su checker -c 'make -C engine check'

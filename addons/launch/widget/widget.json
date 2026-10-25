@@ -1,0 +1,7 @@
+{
+  "id": "launches",
+  "name": "Launches",
+  "description": "The next SpaceX launch, how long until it flies, and the ones after: Vetro's launch card",
+  "sizes": [[4, 3], [3, 3], [4, 4], [5, 4]],
+  "default": [4, 3]
+}

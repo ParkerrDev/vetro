@@ -1,0 +1,389 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Lens model reference</title>
+<!--
+  The lens model of docs/model.md, written a second time and on its own: the
+  outline of every pane is exact geometry here (a signed distance function),
+  the frost is a Gaussian at full resolution, and the lens is computed in the
+  shader from the profile and Snell's law. The plugin derives all three from
+  the layer's pixels at reduced resolution, and docs/compare shows how far the
+  two agree.
+
+  job.js, written by compare.sh next to this file, sets window.JOB:
+    width, height   canvas size, device pixels
+    scale           device pixels per logical pixel
+    background      image of what lies behind the panes
+    layer           image of the layer's own pixels (premultiplied RGBA), or null
+    shapes          [{x, y, w, h, r, n}] in logical pixels; n is the corner exponent
+    params          the preset's options, in the plugin's names and units
+-->
+<style>html, body { margin: 0; background: #000; } canvas { display: block; }</style>
+<canvas id="canvas"></canvas>
+<a id="result"></a>
+<script src="job.js"></script>
+<script>
+"use strict";
+
+const VERTEX = `#version 300 es
+in vec2 pos;
+out vec2 uv;
+void main() { uv = pos * 0.5 + 0.5; gl_Position = vec4(pos, 0.0, 1.0); }`;
+
+// A Gaussian along one axis, every tap read on its own.
+const BLUR = `#version 300 es
+precision highp float;
+uniform sampler2D tex;
+uniform vec2 step;
+uniform float sigma;
+uniform int radius;
+in vec2 uv;
+out vec4 color;
+void main() {
+    float inverse = -0.5 / (sigma * sigma);
+    vec4 sum = texture(tex, uv);
+    float weights = 1.0;
+    for (int i = 1; i <= radius; i++) {
+        float w = exp(float(i * i) * inverse);
+        sum += w * (texture(tex, uv + step * float(i)) + texture(tex, uv - step * float(i)));
+        weights += 2.0 * w;
+    }
+    color = sum / weights;
+}`;
+
+const SHAPES = `
+const int MAX_SHAPES = 24;
+uniform int shapeCount;
+uniform vec4 shapeRect[MAX_SHAPES];    // x, y, w, h, device pixels
+uniform vec3 shapeInfo[MAX_SHAPES];    // corner radius, corner exponent, short side
+
+float shapeDistance(vec2 p, int i) {
+    vec2  halfSize = shapeRect[i].zw * 0.5;
+    float r = min(shapeInfo[i].x, min(halfSize.x, halfSize.y));
+    float n = shapeInfo[i].y;
+    vec2  q = abs(p - shapeRect[i].xy - halfSize) - halfSize + r;
+    vec2  m = max(q, 0.0);
+    float corner = n == 2.0 ? length(m) : pow(pow(m.x, n) + pow(m.y, n), 1.0 / n);
+    return min(max(q.x, q.y), 0.0) + corner - r;
+}
+
+// Signed distance to the nearest outline (negative inside) and which pane it belongs to.
+float sceneDistance(vec2 p, out int nearest) {
+    float best = 1e9;
+    nearest = 0;
+    for (int i = 0; i < MAX_SHAPES; i++) {
+        if (i >= shapeCount) break;
+        float d = shapeDistance(p, i);
+        if (d < best) { best = d; nearest = i; }
+    }
+    return best;
+}
+`;
+
+// The panes' coverage, for the shadow.
+const COVERAGE = `#version 300 es
+precision highp float;
+uniform vec2 size;
+${SHAPES}
+in vec2 uv;
+out vec4 color;
+void main() {
+    vec2 p = vec2(uv.x, 1.0 - uv.y) * size;
+    int nearest;
+    float d = sceneDistance(p, nearest);
+    color = vec4(clamp(0.5 - d, 0.0, 1.0));
+}`;
+
+const GLASS = `#version 300 es
+precision highp float;
+uniform sampler2D background;   // sharp
+uniform sampler2D frost;        // the same, blurred
+uniform sampler2D shadowMap;    // blurred coverage
+uniform sampler2D layer;        // the layer's own pixels, premultiplied
+uniform int hasLayer;
+uniform vec2 size;
+
+uniform float bezelWidth, thickness, refractiveIndex, profileExponent, refraction, dispersion;
+uniform float fieldSigma;
+uniform float saturation, brightness, contrast, tintOverDark, tintOverBright, opacity;
+uniform vec3 tintColor;
+uniform vec2 lightDirection;
+uniform float lightIntensity, counterLight, rimWidth, rimGlow, innerShadow;
+uniform float shadowOpacity;
+uniform vec2 shadowOffset;
+${SHAPES}
+in vec2 uv;
+out vec4 color;
+
+const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
+
+float profileHeight(float t) {
+    float u = 1.0 - clamp(t, 0.0, 1.0);
+    return pow(max(0.0, 1.0 - pow(u, profileExponent)), 1.0 / profileExponent);
+}
+float profileSlope(float t) {
+    float u = 1.0 - clamp(t, 0.0, 1.0);
+    return pow(u, profileExponent - 1.0) * pow(max(1e-9, 1.0 - pow(u, profileExponent)), 1.0 / profileExponent - 1.0);
+}
+// tangent of the lean of a ray from straight above after it enters the rim at t
+float deviation(float t, float n) {
+    if (t >= 1.0) return 0.0;
+    if (t <= 0.0) return sqrt(n * n - 1.0);
+    float a1 = atan(profileSlope(t));
+    float a2 = asin(sin(a1) / n);
+    return tan(a1 - a2);
+}
+// standard normal distribution function (Abramowitz and Stegun 7.1.26)
+float normalCdf(float x) {
+    float z = abs(x) / sqrt(2.0);
+    float k = 1.0 / (1.0 + 0.3275911 * z);
+    float e = 1.0 - (((((1.061405429 * k - 1.453152027) * k) + 1.421413741) * k - 0.284496736) * k + 0.254829592) * k * exp(-z * z);
+    return 0.5 * (1.0 + sign(x) * e);
+}
+vec3 at(sampler2D t, vec2 p) { return texture(t, vec2(p.x, size.y - p.y) / size).rgb; }
+
+void main() {
+    vec2 p = vec2(uv.x, 1.0 - uv.y) * size;
+    vec3 behind = at(background, p);
+
+    int   nearest;
+    float d        = sceneDistance(p, nearest);
+    float coverage = clamp(0.5 - d, 0.0, 1.0);
+
+    // the shadow lies on the page under the pane and shows only beside it
+    float shadow = coverage < 1.0 ? shadowOpacity * at(shadowMap, p - shadowOffset).r : 0.0;
+
+    vec3 glass = vec3(0.0);
+    if (coverage > 0.0) {
+        int ignored;
+        vec2 gradient = vec2(sceneDistance(p + vec2(0.5, 0.0), ignored) - sceneDistance(p - vec2(0.5, 0.0), ignored),
+                             sceneDistance(p + vec2(0.0, 0.5), ignored) - sceneDistance(p - vec2(0.0, 0.5), ignored));
+        vec2 inward = length(gradient) > 1e-6 ? -normalize(gradient) : vec2(0.0);
+        float depth = max(-d, 0.0);
+
+        // the lens fitted to this pane: the rim at most a quarter of its short side,
+        // the bend at most to its centre line
+        float shortSide = shapeInfo[nearest].z;
+        float rim  = min(bezelWidth, 0.25 * shortSide);
+        float slab = min(thickness, 0.5 * shortSide / (refraction * sqrt(refractiveIndex * refractiveIndex - 1.0)));
+        float t    = clamp(depth / rim, 0.0, 1.0);
+
+        float spread = 0.5 * dispersion * (refractiveIndex - 1.0);
+        vec3  index  = vec3(refractiveIndex - spread, refractiveIndex, refractiveIndex + spread);
+        vec3  bend   = refraction * (rim * profileHeight(t) + slab) * vec3(deviation(t, index.r), deviation(t, index.g), deviation(t, index.b));
+
+        vec3 c;
+        if (dispersion > 0.0) {
+            c.r = at(frost, p + inward * bend.r).r;
+            c.g = at(frost, p + inward * bend.g).g;
+            c.b = at(frost, p + inward * bend.b).b;
+        } else {
+            c = at(frost, p + inward * bend.g);
+        }
+
+        float luminance = dot(c, LUMA);
+        c = mix(vec3(luminance), c, saturation);
+        c = (c - 0.5) * contrast + 0.5;
+        c *= brightness;
+        c = mix(c, tintColor, mix(tintOverDark, tintOverBright, clamp(luminance, 0.0, 1.0)));
+
+        // The rim. The plugin measures depth by a coverage blurred with fieldSigma,
+        // v = Phi(depth / sigma); the same quantity from the exact depth.
+        float v    = normalCdf(depth / fieldSigma);
+        float edge = clamp(2.0 * (1.0 - v), 0.0, 1.0);
+        float facing = dot(-inward, lightDirection);
+        float lit    = facing * facing * (facing > 0.0 ? 1.0 : counterLight);
+        float glow   = edge * edge * edge;
+        float line   = clamp(0.5 - depth + rimWidth, 0.0, 1.0);
+        c *= 1.0 - innerShadow * glow;
+        c += lightIntensity * lit * (line + rimGlow * glow);
+        glass = clamp(c, 0.0, 1.0);
+    }
+
+    float glassAlpha  = coverage * opacity;
+    float shadowAlpha = shadow * opacity * (1.0 - glassAlpha);
+    vec3  result      = behind * (1.0 - glassAlpha - shadowAlpha) + glass * glassAlpha;
+
+    if (hasLayer == 1) {
+        vec4 own = texture(layer, vec2(p.x, size.y - p.y) / size);
+        result = own.rgb + result * (1.0 - own.a);
+    }
+    color = vec4(result, 1.0);
+}`;
+
+function fail(message) {
+    document.getElementById("result").textContent = "FAILED: " + message;
+    document.title = "failed";
+    throw new Error(message);
+}
+
+function program(gl, fragment) {
+    const make = (type, source) => {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) fail(gl.getShaderInfoLog(shader));
+        return shader;
+    };
+    const p = gl.createProgram();
+    gl.attachShader(p, make(gl.VERTEX_SHADER, VERTEX));
+    gl.attachShader(p, make(gl.FRAGMENT_SHADER, fragment));
+    gl.bindAttribLocation(p, 0, "pos");
+    gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) fail(gl.getProgramInfoLog(p));
+    return p;
+}
+
+function target(gl, width, height) {
+    const texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, width, height, 0, gl.RGBA, gl.HALF_FLOAT, null);
+    for (const [name, value] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]])
+        gl.texParameteri(gl.TEXTURE_2D, name, value);
+    const framebuffer = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) fail("framebuffer incomplete");
+    return { texture, framebuffer, width, height };
+}
+
+function imageTexture(gl, image, premultiplied) {
+    const texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+    gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+    for (const [name, value] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]])
+        gl.texParameteri(gl.TEXTURE_2D, name, value);
+    return texture;
+}
+
+function load(source) {
+    return new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = () => reject(new Error("cannot load " + source));
+        image.src = source;
+    });
+}
+
+async function main() {
+    const job = window.JOB;
+    if (!job) fail("job.js did not set window.JOB");
+    const canvas = document.getElementById("canvas");
+    canvas.width = job.width;
+    canvas.height = job.height;
+    const gl = canvas.getContext("webgl2", { preserveDrawingBuffer: true, antialias: false, alpha: false, colorSpace: "srgb" });
+    if (!gl) fail("no WebGL 2");
+    if (!gl.getExtension("EXT_color_buffer_float")) fail("no float render targets");
+    gl.getExtension("OES_texture_float_linear");
+
+    const quad = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+    const background = imageTexture(gl, await load(job.background));
+    const layer = job.layer ? imageTexture(gl, await load(job.layer)) : null;
+
+    const k = job.scale, o = job.params;
+    const W = job.width, H = job.height;
+    const use = (p) => { gl.useProgram(p); return (name) => gl.getUniformLocation(p, name); };
+    const draw = (to) => {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, to ? to.framebuffer : null);
+        gl.viewport(0, 0, to ? to.width : W, to ? to.height : H);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    };
+    const bind = (unit, texture) => { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, texture); };
+
+    const shapes = job.shapes.slice(0, 24);
+    const setShapes = (u) => {
+        gl.uniform1i(u("shapeCount"), shapes.length);
+        shapes.forEach((s, i) => {
+            gl.uniform4f(u(`shapeRect[${i}]`), s.x * k, s.y * k, s.w * k, s.h * k);
+            gl.uniform3f(u(`shapeInfo[${i}]`), (s.r || 0) * k, s.n || 2, Math.min(s.w, s.h) * k);
+        });
+    };
+
+    // frost: a Gaussian of deviation o.frost logical pixels, at full resolution
+    const blur = program(gl, BLUR);
+    const gaussian = (source, sigma, width, height) => {
+        const a = target(gl, width, height), b = target(gl, width, height);
+        if (sigma <= 0.05) {
+            const u = use(blur);
+            bind(0, source);
+            gl.uniform1i(u("tex"), 0); gl.uniform2f(u("step"), 0, 0); gl.uniform1f(u("sigma"), 1); gl.uniform1i(u("radius"), 0);
+            draw(b);
+            return b;
+        }
+        const radius = Math.min(400, Math.ceil(4 * sigma));
+        let u = use(blur);
+        bind(0, source);
+        gl.uniform1i(u("tex"), 0); gl.uniform2f(u("step"), 1 / width, 0); gl.uniform1f(u("sigma"), sigma); gl.uniform1i(u("radius"), radius);
+        draw(a);
+        bind(0, a.texture);
+        gl.uniform2f(u("step"), 0, 1 / height);
+        draw(b);
+        return b;
+    };
+    const frost = gaussian(background, o.frost * k, W, H);
+
+    // shadow: the panes' coverage under a Gaussian of deviation shadow_radius / 2.
+    // Wide and smooth, so a quarter of the resolution holds it.
+    const coverage = target(gl, W, H);
+    {
+        const u = use(program(gl, COVERAGE));
+        gl.uniform2f(u("size"), W, H);
+        setShapes(u);
+        draw(coverage);
+    }
+    const shadowOn = o.shadow_opacity > 0 && o.shadow_radius > 0;
+    const quarter = target(gl, W / 4, H / 4);
+    {
+        const u = use(blur);
+        bind(0, coverage.texture);
+        gl.uniform1i(u("tex"), 0); gl.uniform2f(u("step"), 0, 0); gl.uniform1f(u("sigma"), 1); gl.uniform1i(u("radius"), 0);
+        draw(quarter);
+    }
+    const shadow = gaussian(quarter.texture, Math.max(0.3, 0.5 * o.shadow_radius * k / 4), W / 4, H / 4);
+
+    const u = use(program(gl, GLASS));
+    bind(0, background); bind(1, frost.texture); bind(2, shadow.texture);
+    if (layer) bind(3, layer);
+    gl.uniform1i(u("background"), 0); gl.uniform1i(u("frost"), 1); gl.uniform1i(u("shadowMap"), 2); gl.uniform1i(u("layer"), 3);
+    gl.uniform1i(u("hasLayer"), layer ? 1 : 0);
+    gl.uniform2f(u("size"), W, H);
+    setShapes(u);
+    gl.uniform1f(u("bezelWidth"), o.bezel_width * k);
+    gl.uniform1f(u("thickness"), o.glass_thickness * k);
+    gl.uniform1f(u("refractiveIndex"), o.refractive_index);
+    gl.uniform1f(u("profileExponent"), o.profile_exponent);
+    gl.uniform1f(u("refraction"), o.refraction);
+    gl.uniform1f(u("dispersion"), o.dispersion);
+    gl.uniform1f(u("fieldSigma"), Math.max(1, o.bezel_width * k / 3));
+    gl.uniform1f(u("saturation"), o.saturation);
+    gl.uniform1f(u("brightness"), o.brightness);
+    gl.uniform1f(u("contrast"), o.contrast);
+    gl.uniform1f(u("tintOverDark"), o.tint_over_dark);
+    gl.uniform1f(u("tintOverBright"), o.tint_over_bright);
+    gl.uniform1f(u("opacity"), o.glass_opacity);
+    gl.uniform3f(u("tintColor"), ((o.tint_color >>> 24) & 255) / 255, ((o.tint_color >>> 16) & 255) / 255, ((o.tint_color >>> 8) & 255) / 255);
+    const angle = o.light_angle * Math.PI / 180;
+    gl.uniform2f(u("lightDirection"), Math.sin(angle), -Math.cos(angle));
+    gl.uniform1f(u("lightIntensity"), o.light_intensity);
+    gl.uniform1f(u("counterLight"), o.counter_light);
+    gl.uniform1f(u("rimWidth"), Math.max(1, o.rim_width * k));
+    gl.uniform1f(u("rimGlow"), o.rim_glow);
+    gl.uniform1f(u("innerShadow"), o.inner_shadow);
+    gl.uniform1f(u("shadowOpacity"), shadowOn ? o.shadow_opacity : 0);
+    gl.uniform2f(u("shadowOffset"), 0, o.shadow_offset * k);
+    draw(null);
+    gl.finish();
+
+    document.getElementById("result").href = canvas.toDataURL("image/png");
+    document.title = "done";
+}
+
+main().catch((error) => { document.getElementById("result").textContent = "FAILED: " + error.message; document.title = "failed"; });
+</script>

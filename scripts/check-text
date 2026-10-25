@@ -1,0 +1,59 @@
+#!/bin/bash
+# Fails if a text file has an em-dash or an en-dash in it, or a line crediting
+# an AI assistant. Two rules that hold in every repository here.
+#
+#   check-text            every tracked file
+#   check-text FILE...    only these (what the pre-commit hook does)
+#
+# A file named .check-text-ignore at the repository's root lists paths to leave
+# alone, one glob per line: code vendored from elsewhere, or a file whose job is
+# to talk about these very lines.
+set -uo pipefail
+
+root=$(git rev-parse --show-toplevel 2>/dev/null) || {
+  echo "check-text: not in a git repository" >&2
+  exit 2
+}
+cd "$root" || exit 2
+
+ignored=()
+if [ -f .check-text-ignore ]; then
+  mapfile -t ignored < <(grep -vE '^\s*(#|$)' .check-text-ignore)
+fi
+skip() {
+  local glob
+  for glob in "${ignored[@]}"; do
+    # shellcheck disable=SC2053  # the right side is meant as a pattern
+    [[ $1 == $glob ]] && return 0
+  done
+  return 1
+}
+
+if [ $# -gt 0 ]; then
+  files=("$@")
+else
+  mapfile -t files < <(git ls-files)
+fi
+
+# The em-dash and the en-dash, spelled as bytes so this file has neither.
+DASHES=$(printf '\342\200\224|\342\200\223')
+CREDIT='^[[:space:]]*(co-authored-by:.*(claude|anthropic|copilot|openai|codex|gemini|cursor)|claude-session:)|generated with \[?claude code'
+
+bad=0
+for file in "${files[@]}"; do
+  [ -f "$file" ] || continue
+  skip "$file" && continue
+  grep -Iq . "$file" 2>/dev/null || continue # binary, or empty
+  if grep -nHE "$DASHES" "$file"; then
+    bad=1
+  fi
+  if grep -nHiE "$CREDIT" "$file"; then
+    bad=1
+  fi
+done
+
+if [ "$bad" = 1 ]; then
+  echo >&2
+  echo "check-text: the lines above have an em-dash or en-dash, or credit an AI assistant." >&2
+  exit 1
+fi

@@ -1,0 +1,4 @@
+#!/bin/bash
+# This repository's own checks, run by CI after the text check (and by hand
+# before a commit): everything tests/lint.sh covers.
+exec "$(dirname "$(readlink -f "$0")")/../tests/lint.sh"

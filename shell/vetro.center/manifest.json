@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "vetro.center",
+  "name": "Vetro notification center",
+  "version": "1.0.0",
+  "author": "ParkerrDev",
+  "description": "The notification centre as a pane of glass on the right edge: everything still waiting, Do Not Disturb and clear all. Needs vetro.notifications",
+  "kinds": [
+    "panel"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "panel": "Center.qml"
+  }
+}

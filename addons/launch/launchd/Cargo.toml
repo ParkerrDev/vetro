@@ -1,0 +1,51 @@
+# vetro-launchd: SpaceX launch data for the launch card, the lock screen and
+# the login screen. A library that never prints or touches the network (the
+# settings, the launches as the cards read them, when to look again) and a
+# thin binary over it (the socket, the files, curl).
+[package]
+name = "vetro-launchd"
+description = "SpaceX launch data and the weather for Vetro's cards, lock screen and login screen"
+version = "2.0.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+publish = false
+
+[dependencies]
+anyhow = "1"
+serde_json = "1"
+thiserror = "2"
+toml = { version = "0.8", default-features = false, features = ["parse"] }
+
+[profile.release]
+panic = "abort"
+opt-level = "s"
+codegen-units = 1
+lto = true
+strip = true
+overflow-checks = true
+
+# Power of Ten lint tables (the power-of-ten-rust skill).
+[lints.rust]
+unsafe_code = "forbid"
+unreachable_code = "deny"
+unreachable_patterns = "deny"
+unused = { level = "deny", priority = -1 }
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+expect_used = "warn"
+unreachable = "warn"
+indexing_slicing = "deny"
+arithmetic_side_effects = "warn"
+mem_forget = "deny"
+undocumented_unsafe_blocks = "warn"
+allow_attributes = "warn"
+allow_attributes_without_reason = "warn"
+dbg_macro = "warn"
+print_stdout = "warn"
+print_stderr = "warn"

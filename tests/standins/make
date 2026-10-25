@@ -1,0 +1,18 @@
+#!/bin/bash
+# Stand-in for make: "builds" hyprglass.so in the folder it is given, and
+# writes down which folder that was and whether it held an engine.
+S=${STANDIN_STATE:?STANDIN_STATE is not set}
+mkdir -p "$S"
+dir=.
+while [ $# -gt 0 ]; do
+  case $1 in -C) dir=$2; shift ;; esac
+  shift
+done
+{
+  printf 'make in %s' "$dir"
+  [ -f "$dir/Makefile" ] && printf ' (Makefile)'
+  [ -f "$dir/src/main.cpp" ] && printf ' (src/main.cpp)'
+  printf '\n'
+} >>"$S/log"
+[ -n "${FAKE_BUILD_FAILS:-}" ] && { echo "error: the build failed" >&2; exit 2; }
+printf 'engine built in %s\n' "$dir" >"$dir/hyprglass.so"

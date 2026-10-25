@@ -1,0 +1,277 @@
+#!/usr/bin/env python3
+"""Stand-in for omarchy-shell: the part of the shell's plugin registry that
+Vetro talks to, over the shell.json in $HOME, the way the real one keeps it.
+
+It knows a few of Omarchy's own plugins and reads the rest from the manifests in
+~/.config/omarchy/plugins. Enabling a clone switches its original off and
+disabling it brings the original back; a clone on the bar takes the original's
+place. That is what the real registry does (shell/services/PluginRegistry.qml),
+cut down to what the tests need.
+
+  omarchy-shell shell ping | rescanPlugins | reloadConfig | listPlugins
+  omarchy-shell shell enablePlugin ID [PLACEMENT-JSON]
+  omarchy-shell shell setPluginEnabled ID true|false
+  omarchy-shell shell moveBarWidget ID PLACEMENT-JSON
+"""
+import copy
+import glob
+import json
+import os
+import sys
+
+HOME = os.environ["HOME"]
+CONFIG = f"{HOME}/.config/omarchy/shell.json"
+STATE = os.environ.get("STANDIN_STATE", f"{HOME}/.standin")
+
+FIRST = [
+    {"id": "omarchy.menu", "kinds": ["menu", "bar-widget"], "firstParty": True, "section": "left"},
+    {"id": "omarchy.notifications", "kinds": ["service"], "firstParty": True},
+    {"id": "omarchy.osd", "kinds": ["panel"], "firstParty": True},
+    {"id": "omarchy.lock", "kinds": ["service"], "firstParty": True},
+    {"id": "omarchy.workspaces", "kinds": ["bar-widget"], "firstParty": True, "section": "left"},
+    {"id": "omarchy.clock", "kinds": ["bar-widget"], "firstParty": True, "section": "center"},
+    {"id": "omarchy.bar", "kinds": ["bar"], "firstParty": True},
+]
+
+
+def log(line):
+    os.makedirs(STATE, exist_ok=True)
+    with open(f"{STATE}/log", "a") as fh:
+        fh.write(line + "\n")
+
+
+def load():
+    try:
+        with open(CONFIG) as fh:
+            cfg = json.load(fh)
+    except (OSError, ValueError):
+        cfg = {}
+    cfg.setdefault("version", 1)
+    cfg.setdefault("bar", {}).setdefault("layout", {})
+    for s in ("left", "center", "right"):
+        cfg["bar"]["layout"].setdefault(s, [])
+    cfg.setdefault("plugins", [])
+    return cfg
+
+
+def save(cfg):
+    os.makedirs(os.path.dirname(CONFIG), exist_ok=True)
+    mode = os.stat(CONFIG).st_mode & 0o777 if os.path.exists(CONFIG) else 0o600
+    tmp = CONFIG + ".tmp"
+    with open(tmp, "w") as fh:
+        json.dump(cfg, fh, indent=2, sort_keys=True)
+        fh.write("\n")
+    os.chmod(tmp, mode)
+    os.replace(tmp, CONFIG)
+
+
+def catalog():
+    plugins = {p["id"]: dict(p) for p in FIRST}
+    for manifest in sorted(glob.glob(f"{HOME}/.config/omarchy/plugins/*/manifest.json")):
+        try:
+            with open(manifest) as fh:
+                m = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        plugins[m["id"]] = {
+            "id": m["id"], "name": m.get("name", m["id"]), "kinds": m.get("kinds", []), "firstParty": False,
+            "clonedFrom": (m.get("omarchy") or {}).get("clonedFrom"),
+            "section": (m.get("barWidget") or {}).get("defaultSection", "center"),
+        }
+    return plugins
+
+
+def eid(entry):
+    return entry.get("id", "") if isinstance(entry, dict) else str(entry)
+
+
+def find(cfg, ident):
+    for section in ("left", "center", "right"):
+        for index, entry in enumerate(cfg["bar"]["layout"][section]):
+            if eid(entry) == ident:
+                return ("bar", section, index)
+    for index, entry in enumerate(cfg["plugins"]):
+        if eid(entry) == ident:
+            return ("plugin", None, index)
+    return None
+
+
+def disabled(cfg, ident):
+    return ident in cfg.get("disabledPlugins", [])
+
+
+def remove_disabled(cfg, ident):
+    cfg["disabledPlugins"] = [d for d in cfg.get("disabledPlugins", []) if d != ident]
+    if not cfg["disabledPlugins"]:
+        del cfg["disabledPlugins"]
+
+
+def add_disabled(cfg, ident):
+    if not disabled(cfg, ident):
+        cfg.setdefault("disabledPlugins", []).append(ident)
+
+
+def set_restore(cfg, ident, value):
+    restores = [r for r in cfg.get("cloneSourceRestores", []) if r != ident]
+    if value:
+        restores.append(ident)
+    if restores:
+        cfg["cloneSourceRestores"] = restores
+    else:
+        cfg.pop("cloneSourceRestores", None)
+
+
+def restore_source(cfg, clone, source):
+    layout = cfg["bar"]["layout"]
+    where = find(cfg, clone)
+    if where and where[0] == "bar":
+        entry = layout[where[1]][where[2]]
+        for section in layout:
+            layout[section] = [e for e in layout[section] if eid(e) != source]
+        where = find(cfg, clone)
+        if where:
+            restored = copy.deepcopy(entry) if isinstance(entry, dict) else {}
+            restored["id"] = source
+            layout[where[1]][where[2]] = restored
+    elif where and where[0] == "plugin":
+        del cfg["plugins"][where[2]]
+    if clone in cfg.get("cloneSourceRestores", []):
+        remove_disabled(cfg, source)
+    set_restore(cfg, clone, False)
+
+
+def target(layout, placement, default):
+    section = placement.get("section") or default
+    items = layout[section]
+    index = len(items)
+    if "index" in placement:
+        index = min(int(placement["index"]), len(items))
+    for key, offset in (("before", 0), ("after", 1)):
+        if placement.get(key):
+            for s in layout:
+                for i, entry in enumerate(layout[s]):
+                    if eid(entry) == placement[key]:
+                        return s, i + offset
+    return section, index
+
+
+def move_entry(cfg, ident, placement):
+    layout = cfg["bar"]["layout"]
+    where = find(cfg, ident)
+    if not where or where[0] != "bar":
+        return False
+    entry = layout[where[1]].pop(where[2])
+    section, index = target(layout, placement, where[1])
+    layout[section].insert(index, entry)
+    return True
+
+
+def active_clone(cfg, source, cat):
+    for ident, m in cat.items():
+        if m.get("clonedFrom") == source and find(cfg, ident):
+            return ident
+    return None
+
+
+def set_enabled(cfg, key, value, placement):
+    cat = catalog()
+    m = cat.get(key)
+    if value and not m:
+        return "unknown"
+    kinds = (m or {}).get("kinds", [])
+    is_widget = "bar-widget" in kinds
+    non_widget = any(k != "bar-widget" for k in kinds)
+    cloned = (m or {}).get("clonedFrom")
+    first = (m or {}).get("firstParty", False)
+    layout = cfg["bar"]["layout"]
+    if "bar" in kinds:
+        # A whole bar: the one in use is named in bar.id, and Omarchy's own is
+        # in use when nothing is.
+        if value:
+            cfg["bar"]["id"] = key
+        elif cfg["bar"].get("id") == key:
+            if cloned and cloned != "omarchy.bar":
+                cfg["bar"]["id"] = cloned
+            else:
+                del cfg["bar"]["id"]
+        return "ok"
+    if value and first:
+        clone = active_clone(cfg, key, cat)
+        if clone:
+            restore_source(cfg, clone, key)
+            remove_disabled(cfg, key)
+    where = find(cfg, key)
+    if value:
+        remove_disabled(cfg, key)
+        placed = False
+        if not where and is_widget:
+            src = find(cfg, cloned) if cloned else None
+            if src and src[0] == "bar":
+                entry = copy.deepcopy(layout[src[1]][src[2]]) if isinstance(layout[src[1]][src[2]], dict) else {}
+                entry["id"] = key
+                layout[src[1]][src[2]] = entry
+            else:
+                section, index = target(layout, placement or {}, m.get("section") or "center")
+                layout[section].insert(index, {"id": key})
+                placed = True
+        elif not where and not first:
+            cfg["plugins"].append({"id": key})
+        if is_widget and not placed and placement:
+            move_entry(cfg, key, placement)
+        if cloned and non_widget and not disabled(cfg, cloned):
+            add_disabled(cfg, cloned)
+            set_restore(cfg, key, True)
+        return "ok"
+    if cloned:
+        restore_source(cfg, key, cloned)
+    elif where and where[0] == "bar":
+        del layout[where[1]][where[2]]
+    elif where and where[0] == "plugin":
+        del cfg["plugins"][where[2]]
+    if first and not is_widget:
+        add_disabled(cfg, key)
+    return "ok"
+
+
+def listing(cfg):
+    out = []
+    for ident, m in catalog().items():
+        enabled = (not disabled(cfg, ident)) if m["firstParty"] else bool(find(cfg, ident))
+        if "bar" in m["kinds"]:
+            enabled = cfg["bar"].get("id", "omarchy.bar") == ident
+        out.append({"id": ident, "name": m.get("name", ident), "kinds": m["kinds"], "firstParty": m["firstParty"], "enabled": enabled})
+    return out
+
+
+def main(argv):
+    if os.environ.get("FAKE_SHELL_DOWN"):
+        print("omarchy-shell is not running", file=sys.stderr)
+        return 1
+    args = [a for a in argv if a != "-q"]
+    if len(args) < 2 or args[0] != "shell":
+        return 2
+    verb, rest = args[1], args[2:]
+    log("omarchy-shell shell " + " ".join([verb] + rest))
+    if verb in ("ping", "rescanPlugins", "reloadConfig"):
+        print("pong" if verb == "ping" else "ok")
+        return 0
+    cfg = load()
+    if verb == "listPlugins":
+        print(json.dumps(listing(cfg)))
+        return 0
+    if verb == "enablePlugin":
+        result = set_enabled(cfg, rest[0], True, json.loads(rest[1]) if len(rest) > 1 else {})
+    elif verb == "setPluginEnabled":
+        result = set_enabled(cfg, rest[0], rest[1] == "true", {})
+    elif verb == "moveBarWidget":
+        result = "ok" if move_entry(cfg, rest[0], json.loads(rest[1])) else "unknown widget"
+    else:
+        result = "unknown command"
+    if result == "ok":
+        save(cfg)
+    print(result)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

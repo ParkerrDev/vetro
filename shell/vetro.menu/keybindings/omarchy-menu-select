@@ -1,0 +1,9 @@
+#!/bin/bash
+# Stands in for Omarchy's omarchy-menu-select when Vetro's menu runs a
+# keybinding (Menu.qml, runKeybinding). The menu has been shown and answered
+# already: the line chosen there comes in VETRO_KEYBINDING, and
+# omarchy-menu-keybindings, which asks this for it, dispatches it exactly as
+# it dispatches a choice from its own menu.
+cat >/dev/null
+[[ -n ${VETRO_KEYBINDING:-} ]] || exit 1
+printf '%s\n' "$VETRO_KEYBINDING"

@@ -1,0 +1,5 @@
+#!/bin/bash
+# curl, as far as these tests need it: on the PATH, where the launch addon
+# looks for it. Nothing in the tests fetches anything.
+echo "curl $*" >>"${STANDIN_STATE:?}/log"
+exit 7

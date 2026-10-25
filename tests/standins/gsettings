@@ -1,0 +1,28 @@
+#!/bin/bash
+# Stand-in for gsettings: a key and a value a line, in $STANDIN_STATE/gsettings.
+S=${STANDIN_STATE:?STANDIN_STATE is not set}
+mkdir -p "$S"
+echo "gsettings $*" >>"$S/log"
+store=$S/gsettings
+touch "$store"
+case ${1:-} in
+  get)
+    value=$(awk -v k="$3" '$1 == k { sub(/^[^ ]+ /, ""); print; found = 1 } END { exit !found }' "$store") || value="''"
+    printf '%s\n' "$value"
+    ;;
+  set)
+    value=$4
+    # gsettings writes a string with quotes, and a number or a truth without.
+    case $value in
+      \'* | true | false | -[0-9]* | [0-9]*) ;;
+      *) value="'$value'" ;;
+    esac
+    grep -v "^$3 " "$store" >"$store.new" || true
+    printf '%s %s\n' "$3" "$value" >>"$store.new"
+    mv "$store.new" "$store"
+    ;;
+  reset)
+    grep -v "^$3 " "$store" >"$store.new" || true
+    mv "$store.new" "$store"
+    ;;
+esac

@@ -1,0 +1,14 @@
+# Power of Ten: clippy thresholds. Place at the crate (or workspace) root.
+# clippy reads this from CARGO_MANIFEST_DIR. These tune lints enabled by the
+# pedantic / default groups in cargo-lints.toml.
+
+# Rule 4, short functions: roughly one screen each.
+# (Tunes clippy::too_many_lines, which the pedantic group enables.)
+too-many-lines-threshold = 60
+
+# Rule 1 / Rule 4: keep functions simple enough to analyze.
+# (Tunes clippy::too_many_arguments, on by default.)
+too-many-arguments-threshold = 5
+
+# Optional: align MSRV-sensitive lints to your minimum supported Rust version.
+# msrv = "1.74"

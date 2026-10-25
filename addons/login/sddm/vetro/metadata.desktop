@@ -1,0 +1,9 @@
+[SddmGreeterTheme]
+Name=vetro
+Description=Vetro's login screen: the SpaceX launch video behind black glass, the next launch, D-DIN
+Author=ParkerrDev
+Type=sddm-theme
+Version=1.0
+MainScript=Main.qml
+ConfigFile=theme.conf
+QtVersion=6

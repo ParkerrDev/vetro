@@ -1,0 +1,20 @@
+#!/bin/bash
+# Stand-in for systemctl --user: units are "active" while a file says so.
+S=${STANDIN_STATE:?STANDIN_STATE is not set}
+mkdir -p "$S"
+echo "systemctl $*" >>"$S/log"
+verb='' unit=''
+for arg in "$@"; do
+  case $arg in
+    --user | --quiet | -q) ;;
+    *)
+      if [ -z "$verb" ]; then verb=$arg; elif [ -z "$unit" ]; then unit=$arg; fi
+      ;;
+  esac
+done
+case $verb in
+  is-active) [ -e "$S/active-$unit" ] ;;
+  stop) rm -f "$S/active-$unit" ;;
+  start | restart | try-restart) : >"$S/active-$unit" ;;
+  *) ;;
+esac

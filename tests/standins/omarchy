@@ -1,0 +1,64 @@
+#!/bin/bash
+# Stand-in for the omarchy command: plugins and the bar go to the stand-in
+# shell, a theme change is written down, kept in theme.name and followed by the
+# theme-set hooks, as Omarchy's own does.
+S=${STANDIN_STATE:?STANDIN_STATE is not set}
+mkdir -p "$S"
+echo "omarchy $*" >>"$S/log"
+placement() {
+  local section='' index='' before='' after=''
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --section) section=$2; shift ;;
+      --index) index=$2; shift ;;
+      --before) before=$2; shift ;;
+      --after) after=$2; shift ;;
+      left | center | right) section=$1 ;;
+    esac
+    shift
+  done
+  jq -cn --arg s "$section" --arg i "$index" --arg b "$before" --arg a "$after" '
+    {} + (if $s == "" then {} else {section: $s} end) + (if $i == "" then {} else {index: ($i | tonumber)} end)
+       + (if $b == "" then {} else {before: $b} end) + (if $a == "" then {} else {after: $a} end)'
+}
+case "${1:-} ${2:-}" in
+  "plugin enable")
+    id=$3
+    shift 3
+    result=$(omarchy-shell shell enablePlugin "$id" "$(placement "$@")")
+    [ "$result" = ok ] || { echo "omarchy-plugin-enable: $result" >&2; exit 1; }
+    ;;
+  "plugin disable")
+    result=$(omarchy-shell shell setPluginEnabled "$3" false)
+    [ "$result" = ok ] || { echo "omarchy-plugin-disable: $result" >&2; exit 1; }
+    ;;
+  "plugin list")
+    omarchy-shell shell listPlugins
+    ;;
+  "bar use")
+    # The shell's file is the shell's to write: through it, as a plugin enabled.
+    if [ "$3" = omarchy.bar ]; then
+      jq -e '.bar.id' "$HOME/.config/omarchy/shell.json" >/dev/null 2>&1 || exit 0
+      result=$(omarchy-shell shell setPluginEnabled "$(jq -r '.bar.id' "$HOME/.config/omarchy/shell.json")" false)
+    else
+      result=$(omarchy-shell shell enablePlugin "$3")
+    fi
+    [ "$result" = ok ] || { echo "omarchy-bar: $3 is not a known bar option" >&2; exit 1; }
+    ;;
+  "bar move")
+    id=$3
+    shift 3
+    result=$(omarchy-shell shell moveBarWidget "$id" "$(placement "$@")")
+    [ "$result" = ok ] || { echo "omarchy-bar: $result" >&2; exit 1; }
+    ;;
+  "theme set")
+    mkdir -p "$HOME/.local/state/omarchy/current"
+    echo "$3" >"$HOME/.local/state/omarchy/current/theme.name"
+    # The browsers are given the theme's colour before the hooks run.
+    omarchy-theme-set-browser
+    for hook in "$HOME"/.config/omarchy/hooks/theme-set.d/*; do
+      if [ -f "$hook" ]; then bash "$hook" "$3" || true; fi
+    done
+    ;;
+esac
+exit 0

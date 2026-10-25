@@ -1,0 +1,133 @@
+# Launch theme: Omarchy's own surfaces in the launch card's style: black glass
+# (blurred by Hyprland, see hypr/vetro.lua), white text, white
+# hairlines at 24%, and no color anywhere, alerts and errors included.
+
+[bar]
+background       = "#000000"
+background-alpha = 0.5
+text             = "#ffffff"
+active           = "#ffffff"
+scale-with-font  = true
+size-horizontal  = 35
+size-vertical    = 35
+
+[hyprland]
+active-border            = "#ffffff"
+active-border-foreground = "#ffffff"
+
+[controls]
+normal-color        = "#ffffff"
+normal-fill-alpha   = 0.06
+normal-border       = "#ffffff"
+normal-border-width = 1
+normal-border-alpha = 0.24
+
+hover-cursor-color        = "#ffffff"
+hover-cursor-fill-alpha   = 0.1
+hover-cursor-border       = "#ffffff"
+hover-cursor-border-width = 1
+hover-cursor-border-alpha = 0.5
+
+focus-color        = "#ffffff"
+focus-fill-alpha   = 0.1
+focus-border       = "#ffffff"
+focus-border-width = 1
+focus-border-alpha = 0.5
+
+selected-color        = "#ffffff"
+selected-fill-alpha   = 0.18
+selected-border       = "#ffffff"
+selected-border-width = 0
+selected-border-alpha = 1.0
+
+pressed-fill-alpha   = 0.25
+selection-fill-alpha = 0.35
+
+[font]
+base-size = 12
+
+[popups]
+background       = "#000000"
+background-alpha = 0.55
+text             = "#ffffff"
+border           = "#ffffff"
+border-alpha     = 0.24
+border-width     = 1
+
+[tooltip]
+background       = "#000000"
+background-alpha = 0.8
+text             = "#ffffff"
+border           = "#ffffff"
+border-alpha     = 0.24
+
+[notifications]
+background       = "#000000"
+background-alpha = 0.55
+text             = "#ffffff"
+border           = "#ffffff"
+border-alpha     = 0.24
+border-width     = 1
+countdown        = "#ffffff"
+
+[launcher]
+background                = "#000000"
+background-alpha          = 0.6
+text                      = "#ffffff"
+border                    = "#ffffff"
+border-alpha              = 0.24
+scrim                     = "#000000"
+scrim-alpha               = 0.4
+selected-background       = "#ffffff"
+selected-background-alpha = 0.1
+selected-text             = "#ffffff"
+selected-border           = "#ffffff"
+selected-border-alpha     = 0.35
+
+[menu]
+background                = "#000000"
+background-alpha          = 0.6
+text                      = "#ffffff"
+border                    = "#ffffff"
+border-alpha              = 0.24
+scrim                     = "#000000"
+scrim-alpha               = 0.4
+selected-background       = "#ffffff"
+selected-background-alpha = 0.1
+selected-text             = "#ffffff"
+selected-border           = "#ffffff"
+selected-border-alpha     = 0.35
+
+[polkit]
+background       = "#000000"
+background-alpha = 0.7
+text             = "#ffffff"
+text-error       = "#ffffff"
+border           = "#ffffff"
+border-error     = "#ffffff"
+border-alpha     = 0.35
+scrim            = "#000000"
+scrim-alpha      = 0.5
+accent           = "#ffffff"
+
+[lock]
+background       = "#ffffff"
+background-alpha = 0.07
+text             = "#ffffff"
+placeholder      = "#8c8c8c"
+text-error       = "#ffffff"
+border           = "#ffffff"
+border-active    = "#ffffff"
+border-error     = "#ffffff"
+border-alpha     = 0.6
+selection        = "#ffffff"
+selection-alpha  = 0.35
+
+[image-picker]
+scrim                   = "#000000"
+scrim-alpha             = 0.5
+text                    = "#ffffff"
+selected-border         = "#ffffff"
+selected-border-alpha   = 1.0
+unselected-border       = "#ffffff"
+unselected-border-alpha = 0.24

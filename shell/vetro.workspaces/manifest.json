@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "vetro.workspaces",
+  "name": "Vetro workspaces",
+  "version": "1.0.0",
+  "author": "ParkerrDev",
+  "description": "Omarchy's workspace numbers, with a pane of glass that slides to the focused one",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Workspaces.qml"
+  },
+  "barWidget": {
+    "displayName": "Workspaces",
+    "description": "Workspace numbers with a sliding pane of glass",
+    "category": "Compositor",
+    "allowMultiple": false
+  },
+  "omarchy": {
+    "clonedFrom": "omarchy.workspaces"
+  }
+}

@@ -1,0 +1,14 @@
+# Which engine to build for which Hyprland. One line each:
+#
+#   <Hyprland commit>  <engine commit>  [<folder>]   # what they are
+#
+# engine/build.sh reads the Hyprland commit from the installed headers and
+# refuses to build when it is not listed here. A line is only added after that
+# pair has been built and seen working: the engine hooks into Hyprland's
+# private drawing code, and a pairing that merely compiles proves nothing.
+#
+# The engine commit is a commit of this repository: the build script fetches it
+# from here. <folder> is where the engine's Makefile is in that commit: "." (or
+# nothing) for the commits that came in with the hyprglass history, where the
+# engine was the whole tree, and "engine" for a commit made since the engine
+# moved into this repository.

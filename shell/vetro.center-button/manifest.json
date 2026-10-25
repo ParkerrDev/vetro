@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "vetro.center-button",
+  "name": "Vetro notification bell",
+  "version": "1.0.0",
+  "author": "ParkerrDev",
+  "description": "A bell in Omarchy's bar that opens Vetro's notification center, with a dot while notifications are waiting",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Bell.qml"
+  },
+  "barWidget": {
+    "displayName": "Notification center",
+    "description": "Opens Vetro's notification center",
+    "category": "System",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}

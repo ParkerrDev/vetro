@@ -1,0 +1,12 @@
+#!/bin/bash
+# Stand-in for Omarchy's helper that writes a colour into each browser's
+# policy folder that exists, under $VETRO_POLICY_ROOT instead of /etc.
+S=${STANDIN_STATE:?STANDIN_STATE is not set}
+R=${VETRO_POLICY_ROOT:?VETRO_POLICY_ROOT is not set}
+mkdir -p "$S"
+echo "omarchy-theme-set-browser-policy $*" >>"$S/log"
+[[ ${1:-} =~ ^[0-9a-f]{6}$ ]] || exit 1
+for dir in chromium opt/chrome opt/edge brave; do
+  [ -d "$R/$dir/policies/managed" ] || continue
+  printf '{"BrowserThemeColor": "#%s", "BrowserColorScheme": "device"}\n' "$1" >"$R/$dir/policies/managed/color.json"
+done

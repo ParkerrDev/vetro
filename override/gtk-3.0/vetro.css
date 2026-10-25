@@ -1,0 +1,88 @@
+/*
+ * Vetro: glass, whatever the theme and wallpaper (see override/README.md).
+ * A window draws almost nothing behind its content: a fifth of black, so
+ * that white text holds where nothing else tones what is behind, and over it
+ * a list or a sidebar its own faint step. The rest is the pane the compositor
+ * keeps behind the whole window. Text is white, and buttons and hover states
+ * are the text colour at low opacity, which adw-gtk3 and libadwaita do by
+ * themselves. Menus and other popups stay solid: no pane is behind those.
+ */
+
+@define-color accent_color #ffffff;
+@define-color accent_bg_color #ffffff;
+@define-color accent_fg_color #000000;
+@define-color destructive_color #ffffff;
+@define-color destructive_bg_color #ffffff;
+@define-color destructive_fg_color #000000;
+@define-color success_color #ffffff;
+@define-color success_bg_color #ffffff;
+@define-color success_fg_color #000000;
+@define-color warning_color #ffffff;
+@define-color warning_bg_color #ffffff;
+@define-color warning_fg_color #000000;
+@define-color error_color #ffffff;
+@define-color error_bg_color #ffffff;
+@define-color error_fg_color #000000;
+@define-color window_bg_color rgba(0, 0, 0, 0.2);
+@define-color window_fg_color #ffffff;
+@define-color view_bg_color rgba(0, 0, 0, 0.12);
+@define-color view_fg_color #ffffff;
+@define-color headerbar_bg_color rgba(0, 0, 0, 0);
+@define-color headerbar_fg_color #ffffff;
+@define-color headerbar_backdrop_color rgba(0, 0, 0, 0);
+@define-color headerbar_border_color rgba(255, 255, 255, 0.22);
+@define-color headerbar_shade_color rgba(255, 255, 255, 0.12);
+@define-color headerbar_darker_shade_color rgba(255, 255, 255, 0.12);
+@define-color sidebar_bg_color rgba(255, 255, 255, 0.03);
+@define-color sidebar_fg_color #ffffff;
+@define-color sidebar_backdrop_color rgba(255, 255, 255, 0.03);
+@define-color sidebar_border_color rgba(255, 255, 255, 0.12);
+@define-color sidebar_shade_color rgba(255, 255, 255, 0.08);
+@define-color secondary_sidebar_bg_color rgba(255, 255, 255, 0.03);
+@define-color secondary_sidebar_fg_color #ffffff;
+@define-color secondary_sidebar_backdrop_color rgba(255, 255, 255, 0.03);
+@define-color secondary_sidebar_border_color rgba(255, 255, 255, 0.12);
+@define-color secondary_sidebar_shade_color rgba(255, 255, 255, 0.08);
+@define-color card_bg_color rgba(255, 255, 255, 0.06);
+@define-color card_fg_color #ffffff;
+@define-color card_shade_color rgba(0, 0, 0, 0.36);
+@define-color dialog_bg_color rgba(0, 0, 0, 0.45);
+@define-color dialog_fg_color #ffffff;
+@define-color popover_bg_color #000000;
+@define-color popover_fg_color #ffffff;
+@define-color popover_shade_color rgba(0, 0, 0, 0.25);
+@define-color thumbnail_bg_color rgba(0, 0, 0, 0.3);
+@define-color thumbnail_fg_color #ffffff;
+@define-color shade_color rgba(0, 0, 0, 0.36);
+@define-color scrollbar_outline_color rgba(0, 0, 0, 0.5);
+
+/* A checked switch's track is the white accent, so its knob is black. */
+switch:checked > slider {
+  background-color: #000000;
+}
+
+/* adw-gtk3 hardcodes white text on the accent, which is white here. */
+button.suggested-action,
+button.suggested-action:hover,
+button.suggested-action:active,
+button.suggested-action:checked,
+.terminal selection,
+.terminal text selection {
+  color: #000000;
+}
+
+/* Shadows don't show on black, so popups get a white hairline edge instead. */
+popover.background,
+.csd popover.background,
+tooltip.background {
+  border-color: rgba(255, 255, 255, 0.24);
+}
+
+menu,
+.menu,
+.context-menu,
+.csd menu,
+.csd .menu,
+.csd .context-menu {
+  border: 1px solid rgba(255, 255, 255, 0.24);
+}

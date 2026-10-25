@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "vetro.barglass",
+  "name": "Vetro bar glass",
+  "version": "1.0.0",
+  "author": "ParkerrDev",
+  "description": "Vetro's bar shape for Omarchy's own bar: a rounded pane with a hairline frame, drawn behind the bar, which keeps its widgets, panels and keybinds",
+  "kinds": [
+    "panel"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "panel": "Glass.qml"
+  }
+}

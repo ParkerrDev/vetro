@@ -1,0 +1,37 @@
+# What a dependency has to be before it is let in: `cargo deny check`.
+
+[graph]
+all-features = true
+
+[licenses]
+# Licences that put no condition on this project's own. Anything else is a
+# decision, made here with a reason beside it.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+    "CC0-1.0",
+    "Unlicense",
+]
+unused-allowed-license = "allow"
+confidence-threshold = 0.9
+
+[bans]
+# Two versions of one crate is worth knowing about, not a failure.
+multiple-versions = "warn"
+# A version of "*" is no version at all.
+wildcards = "deny"
+
+[advisories]
+yanked = "deny"
+
+[sources]
+# crates.io and nowhere else, unless a line here says so.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-git = []

@@ -1,0 +1,37 @@
+# Vetro's launch data, for the launch card, the lock screen and the login
+# screen, and the weather card's forecast. Every setting is optional: the
+# commented values are the defaults. Apply changes with `vetro-launch reload`.
+
+[launches]
+# Launch Library 2 provider ids to follow. 121 is SpaceX.
+# providers = [121]
+# upcoming_count = 8
+# How often to ask Launch Library for news. The free API allows 15 calls an
+# hour, so stay above 4 minutes.
+# refresh_minutes = 15
+# refresh_minutes_near_launch = 5
+# near_launch_minutes = 120
+# api = "https://ll.thespacedevs.com/2.3.0"
+
+[overlay]
+# The next-launch card.
+# enabled = true
+# outputs = ["*"]
+# exclude_outputs = ["HEADLESS-*"]
+# top-left, top-right, bottom-left or bottom-right
+# corner = "top-left"
+# upcoming_rows = 3
+
+[weather]
+# The weather card. Where the forecast is for: a place ("Paris", "Fresno CA",
+# "London, UK"), or empty for where your address says you are, which behind a
+# VPN is the VPN's city. The units are fahrenheit (with mph) or celsius (with
+# km/h).
+# location = ""
+# units = "fahrenheit"
+# enabled = true
+# outputs = ["*"]
+# exclude_outputs = ["HEADLESS-*"]
+# corner = "top-right"
+# Hours in the forecast strip.
+# hours = 6

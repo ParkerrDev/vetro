@@ -1,0 +1,27 @@
+# Compiled plugin
+*.so
+
+# Generated files
+# src/shaders.hpp
+src/item-helper/hyprglass-item-v1-server-protocol.h
+src/item-helper/hyprglass-item-v1-protocol.c
+
+# Build artifacts
+*.o
+*.d
+build/
+.cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Debug
+*.dwo
+*.pdb
+
+# Rust build output
+target/

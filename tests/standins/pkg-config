@@ -1,0 +1,8 @@
+#!/bin/bash
+# Stand-in for pkg-config, which knows one package: a Hyprland whose headers
+# are in $FAKE_HYPRLAND_INCLUDE.
+case "$*" in
+  "--exists hyprland") [ -z "${FAKE_NO_HYPRLAND_HEADERS:-}" ] ;;
+  "--cflags-only-I hyprland") echo "-I${FAKE_HYPRLAND_INCLUDE:-/nonexistent}" ;;
+  *) exit 1 ;;
+esac

@@ -1,0 +1,18 @@
+# Power of Ten: clippy's limits. clippy reads this from the crate root (the
+# workspace root, in a workspace).
+
+# Rule 4: short functions, roughly one screen each.
+too-many-lines-threshold = 60
+
+# Rules 1 and 4: functions simple enough to analyse. A longer list of
+# arguments becomes a struct.
+too-many-arguments-threshold = 5
+
+# Tests state what they expect by failing loudly, so the panicking forms that
+# are banned in the program are the right tool there.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+allow-dbg-in-tests = true
+allow-indexing-slicing-in-tests = true
+allow-print-in-tests = true

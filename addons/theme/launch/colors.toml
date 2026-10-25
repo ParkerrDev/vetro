@@ -1,0 +1,39 @@
+# Launch theme: pure black and white, in the SpaceX launch card's style. Greys
+# only stand in for white at low opacity over black. The ANSI colors below
+# are for terminal output, where color carries meaning (diffs, errors);
+# everything the desktop draws itself is white on black (shell.toml).
+mode = "dark"
+
+accent = "#ffffff"
+selection = "#404040"
+muted = "#8c8c8c"
+
+background = "#000000"
+dark_background = "#000000"
+darker_background = "#000000"
+lighter_background = "#1a1a1a"
+
+foreground = "#ffffff"
+dark_foreground = "#666666"
+light_foreground = "#e6e6e6"
+bright_foreground = "#ffffff"
+
+red = "#e06c75"
+yellow = "#e5c07b"
+orange = "#d19a66"
+green = "#98c379"
+cyan = "#56b6c2"
+blue = "#61afef"
+magenta = "#c678dd"
+brown = "#8b6a4f"
+
+bright_red = "#ef8a92"
+bright_yellow = "#f0d197"
+bright_green = "#b2d99a"
+bright_cyan = "#7fcad4"
+bright_blue = "#8cc4f4"
+bright_magenta = "#d79be6"
+
+# Window borders: a white hairline on the focused window, a faint one on the rest.
+hyprland_active_border = "rgba(ffffffb3)"
+hyprland_inactive_border = "rgba(ffffff1f)"

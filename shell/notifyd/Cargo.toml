@@ -1,0 +1,53 @@
+# vetro-notifyd: the notification server under Vetro's toasts and its
+# notification centre. A library that never prints or touches a file or the
+# bus (what is kept, what shows and for how long, what the shell is told) and
+# a thin binary over it (the session bus, the files, the lines to and from the
+# shell plugin that starts it).
+[package]
+name = "vetro-notifyd"
+description = "The freedesktop notification server under Vetro's toasts and notification centre"
+version = "1.0.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+publish = false
+
+[dependencies]
+anyhow = "1"
+png = "0.18"
+serde_json = "1"
+thiserror = "2"
+zbus = { version = "5", default-features = false, features = ["async-io", "blocking-api"] }
+
+[profile.release]
+panic = "abort"
+opt-level = "s"
+codegen-units = 1
+lto = true
+strip = true
+overflow-checks = true
+
+# Power of Ten lint tables (the power-of-ten-rust skill).
+[lints.rust]
+unsafe_code = "forbid"
+unreachable_code = "deny"
+unreachable_patterns = "deny"
+unused = { level = "deny", priority = -1 }
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+expect_used = "warn"
+unreachable = "warn"
+indexing_slicing = "deny"
+arithmetic_side_effects = "warn"
+mem_forget = "deny"
+undocumented_unsafe_blocks = "warn"
+allow_attributes = "warn"
+allow_attributes_without_reason = "warn"
+dbg_macro = "warn"
+print_stdout = "warn"
+print_stderr = "warn"

@@ -1,0 +1,40 @@
+#!/bin/bash
+# Stand-in for hyprctl: it writes down what it is asked and answers from a few
+# files in $STANDIN_STATE. It never reaches a compositor.
+S=${STANDIN_STATE:?STANDIN_STATE is not set}
+mkdir -p "$S"
+echo "hyprctl $*" >>"$S/log"
+case "${1:-} ${2:-}" in
+  "version -j")
+    printf '{"branch":"main","commit":"%s","tag":"v0.56.2"}\n' "${FAKE_HYPRLAND_COMMIT:-0123456789abcdef0123456789abcdef01234567}"
+    ;;
+  "plugin list")
+    if [ -e "$S/plugin" ]; then
+      printf 'Plugin hyprglass by Hyprnux, forked by Vetro:\n\tHandle: 0x1\n\tVersion: test\n'
+    else
+      echo "no plugins loaded"
+    fi
+    ;;
+  "plugin load")
+    if [ -n "${FAKE_PLUGIN_LOAD_FAILS:-}" ]; then
+      echo "plugin failed to load" >&2
+      exit 1
+    fi
+    printf '%s\n' "${3:-}" >"$S/plugin"
+    echo ok
+    ;;
+  "plugin unload")
+    # Hyprland finds a plugin by the path it was loaded from.
+    if [ "$(cat "$S/plugin" 2>/dev/null)" = "${3:-}" ]; then
+      rm -f "$S/plugin"
+      echo ok
+    else
+      echo "no plugin loaded from that path" >&2
+      exit 1
+    fi
+    ;;
+  "configerrors ")
+    printf '%s' "${FAKE_CONFIGERRORS:-}"
+    ;;
+esac
+exit 0

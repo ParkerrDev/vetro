@@ -1,0 +1,15 @@
+#!/bin/bash
+# cargo, as far as these tests need it: on the PATH (the engine's build looks
+# for it, and the stand-in make never calls it), and a build of the launch
+# daemon that leaves a stand-in daemon where cargo would put the real one.
+echo "cargo $*" >>"${STANDIN_STATE:?}/log"
+target=
+while [ $# -gt 0 ]; do
+  case $1 in --target-dir) target=${2:-}; shift ;; esac
+  shift
+done
+if [ -n "$target" ]; then
+  mkdir -p "$target/release"
+  printf '#!/bin/bash\necho "vetro-launchd (stand-in) $*"\n' >"$target/release/vetro-launchd"
+  chmod +x "$target/release/vetro-launchd"
+fi

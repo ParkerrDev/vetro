@@ -1,0 +1,21 @@
+[package]
+name = "glass-ffi"
+description = "The C ABI of glass-core: a static library the Hyprland plugin links"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+glass-core.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+syn.workspace = true
+
+[lints]
+workspace = true

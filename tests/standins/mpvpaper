@@ -1,0 +1,3 @@
+#!/bin/bash
+# Stand-in: it is there for the launch addon to find, and does nothing.
+exit 0

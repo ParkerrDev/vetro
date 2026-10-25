@@ -1,0 +1,10 @@
+# Paths the text check leaves alone: code that was written elsewhere keeps the
+# punctuation it came with. Nothing Vetro writes itself belongs here.
+#
+# The engine is a fork of hyprnux/hyprglass: every dash in these files is
+# upstream's, and the fork's own commits added none. The engine is being
+# rewritten, and the rewrite will not carry them over.
+engine/Makefile
+engine/README.md
+engine/protocols/*
+engine/src/*

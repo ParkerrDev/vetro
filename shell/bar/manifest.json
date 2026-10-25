@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "vetro.bar",
+  "name": "Vetro bar",
+  "version": "1.0.0",
+  "author": "ParkerrDev",
+  "description": "Omarchy's bar with its glass above windows, and nothing on it moved by a drag",
+  "kinds": [
+    "bar"
+  ],
+  "entryPoints": {
+    "bar": "Bar.qml"
+  },
+  "omarchy": {
+    "clonedFrom": "omarchy.bar"
+  }
+}

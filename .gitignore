@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+/addons/launch/launchd/target/
+/shell/notifyd/target/
+/apps/glass/vetro-glass
+/apps/glass/.build/

@@ -1,0 +1,130 @@
+#!/usr/bin/env python3
+"""vetro-launch: the next SpaceX launch, from vetro-launchd.
+
+The launch data is kept by vetro-launchd, a user service. This talks to it,
+over the socket it keeps in $XDG_RUNTIME_DIR/vetro, and reads the launch list
+it caches for the lock screen.
+
+  vetro-launch status          the next launch, and what went wrong if anything
+  vetro-launch refresh         fetch launch data now
+  vetro-launch reload          read ~/.config/vetro/launches.toml again
+  vetro-launch next [--short]  one line about the next launch
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import socket
+import sys
+import time
+from pathlib import Path
+
+HOME = Path.home()
+RUNTIME = Path(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}") / "vetro"
+CONTROL_SOCKET = RUNTIME / "launchd.sock"
+CACHE = Path(os.environ.get("XDG_CACHE_HOME") or HOME / ".cache") / "vetro"
+
+ACTIONS = ["status", "refresh", "reload"]
+
+
+def say(msg: str = "") -> None:
+    print(msg, flush=True)
+
+
+def warn(msg: str) -> None:
+    print(f"vetro-launch: {msg}", file=sys.stderr, flush=True)
+
+
+def daemon_request(payload: dict, timeout: float = 5.0) -> dict:
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+        s.settimeout(timeout)
+        s.connect(str(CONTROL_SOCKET))
+        s.sendall((json.dumps(payload) + "\n").encode())
+        data = b""
+        while not data.endswith(b"\n"):
+            chunk = s.recv(65536)
+            if not chunk:
+                break
+            data += chunk
+    return json.loads(data or b"{}")
+
+
+def fmt_delta(seconds: float) -> str:
+    sign = "T-" if seconds > 0 else "T+"
+    s = abs(int(seconds))
+    days, s = divmod(s, 86400)
+    h, s = divmod(s, 3600)
+    m, s = divmod(s, 60)
+    return f"{sign}{f'{days}d ' if days else ''}{h:02}:{m:02}:{s:02}"
+
+
+def show_status(reply: dict) -> None:
+    nxt = reply.get("next")
+    if nxt:
+        say(f"next      {nxt['title']} ({nxt['rocket']}) {fmt_delta(nxt['net_epoch'] - time.time())}, status {nxt['status']}")
+    else:
+        say("next      none known")
+    if reply.get("fetch_error"):
+        say(f"warning   {reply['fetch_error']}")
+
+
+def cmd_daemon(args) -> int:
+    try:
+        reply = daemon_request({"cmd": args.action}, timeout=10)
+    except (FileNotFoundError, ConnectionRefusedError):
+        warn("vetro-launchd isn't running. Check `systemctl --user status vetro-launchd`.")
+        return 1
+    if args.action == "status" and not args.json:
+        show_status(reply)
+        return 0
+    if args.json:
+        say(json.dumps(reply, indent=1))
+    else:
+        say(reply.get("message") or reply.get("error") or ("ok" if reply.get("ok") else json.dumps(reply)))
+    return 0 if reply.get("ok") else 1
+
+
+def cmd_next(args) -> int:
+    """One line about the next launch, e.g. for the lock screen. Reads the
+    daemon's cache, so it is quick and works without the daemon."""
+    try:
+        upcoming = json.loads((CACHE / "launches.json").read_text()).get("upcoming") or []
+    except (OSError, ValueError):
+        return 0
+    now = time.time()
+    for launch in upcoming:
+        net = launch.get("net_epoch")
+        if not net or now - net > 20 * 60:
+            continue
+        if (launch.get("net_precision") or "") in ("SEC", "MIN", ""):
+            left = int(abs(net - now))
+            days, left = divmod(left, 86400)
+            hours, left = divmod(left, 3600)
+            minutes, seconds = divmod(left, 60)
+            clock = f"{hours:02}:{minutes:02}" + ("" if args.short else f":{seconds:02}")
+            when = ("T− " if net > now else "T+ ") + (f"{days}D " if days else "") + clock
+        else:
+            when = "NET " + time.strftime("%b %-d", time.localtime(net)).upper()
+        say(f"{(launch.get('title') or '').upper()}   ·   {when}")
+        return 0
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(prog="vetro-launch", description=__doc__.split("\n\n")[0])
+    sub = parser.add_subparsers(dest="command", required=True)
+    for action in ACTIONS:
+        p = sub.add_parser(action)
+        p.add_argument("--json", action="store_true", help="print the daemon's reply as it is")
+        p.set_defaults(func=cmd_daemon, action=action)
+    p = sub.add_parser("next", help="one line about the next launch (for the lock screen)")
+    p.add_argument("--short", action="store_true", help="hours and minutes, no seconds")
+    p.set_defaults(func=cmd_next)
+    args = parser.parse_args()
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

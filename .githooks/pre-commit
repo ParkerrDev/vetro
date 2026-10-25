@@ -1,0 +1,7 @@
+#!/bin/bash
+# Before a commit: the text check, on the files being committed.
+set -uo pipefail
+root=$(git rev-parse --show-toplevel)
+mapfile -t staged < <(git diff --cached --name-only --diff-filter=ACMR)
+[ ${#staged[@]} -eq 0 ] && exit 0
+exec "$root/scripts/check-text" "${staged[@]}"

@@ -1,0 +1,64 @@
+Vetro: what is whose
+
+Vetro's own files are ParkerrDev's and are under the MIT licence in LICENSE.
+These parts are not, and keep the terms they came with:
+
+engine/
+  The glass engine, a fork of hyprnux/hyprglass
+  (https://github.com/hyprnux/hyprglass), BSD 3-Clause, Copyright (c) 2025
+  Jeremy Trufier. The licence and the notices stay with it (engine/LICENSE);
+  the fork's own changes are under the same licence.
+
+shell/fonts/, addons/launch/plugin/vetro.cards/launch/fonts/,
+addons/login/sddm/vetro/fonts/
+  D-DIN by Datto, SIL Open Font License 1.1 (OFL-1.1.txt, FONTLOG.txt beside
+  the fonts). Nunito by The Nunito Project Authors, SIL Open Font License 1.1
+  (shell/fonts/Nunito-OFL.txt). Material Symbols by Google, Apache License 2.0
+  (Apache-2.0.txt).
+
+shell/vetro.lock/Service.qml, shell/vetro.menu/, shell/vetro.workspaces/
+  Clones of Omarchy's own shell plugins (https://github.com/basecamp/omarchy),
+  as Omarchy's `omarchy plugin clone` makes them, changed where Vetro's look
+  needs it. MIT licence, Copyright (c) David Heinemeier Hansson. Vetro's bar is
+  built at install time from the Omarchy bar that is installed
+  (tools/bar-build.py), and none of Omarchy's bar is in this repository.
+
+shell/vetro.lib/, shell/notifyd/, shell/vetro.center/, shell/vetro.notifications/,
+shell/vetro.osd/, override/gtk-3.0/, override/gtk-4.0/,
+override/kvantum/kvantum.kvconfig, override/qt6ct/qt6ct.conf.in
+  Vetro's shell began as HyprPerks' Hyprland Desktop Experience, version
+  0.53.0 of the hyprperks dotfiles
+  (https://github.com/hyprwm/hyprperks-dotfiles). Its library has since been
+  written afresh as Vetro's own (the logic in Rust, shell/notifyd; the drawing
+  in new QML, shell/vetro.lib), keeping the look, and the notification centre
+  began from the notification list of HDE's right menu. The toolkit settings
+  files began as HDE's. MIT licence:
+
+    Copyright (c) 2026, Hyprland Development
+
+    Permission is hereby granted, free of charge, to any person obtaining a
+    copy of this software and associated documentation files (the
+    "Software"), to deal in the Software without restriction, including
+    without limitation the rights to use, copy, modify, merge, publish,
+    distribute, sublicense, and/or sell copies of the Software, and to permit
+    persons to whom the Software is furnished to do so, subject to the
+    following conditions:
+
+    The above copyright notice and this permission notice shall be included
+    in all copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+    OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+    MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+    NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+    DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+    OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+    USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+override/kvantum/vetro/
+  KvLibadwaita by Gabriel Perko-Engel (https://github.com/GabePoel/KvLibadwaita,
+  itself based on Colloid-kde by Vince Liuice), recoloured. GPL-3.0, see
+  override/kvantum/vetro/COPYING.
+
+At run time the launch addon asks Launch Library 2 (The Space Devs) for launches
+and Open-Meteo for the weather. Neither is part of this repository.

@@ -1,0 +1,50 @@
+Plugin against reference.html, 2560x1600 at scale 1.6. Each picture: plugin, reference, difference times four.
+Absolute difference in 8-bit levels, by region of the panes.
+
+regular-dark-text.jpg
+face (deeper than the bezel)   pixels  1556004   mean  0.26   95%   1.0   99%   1.0   max   9.0   within 4 levels 100.0%
+band (the bezel)               pixels   659360   mean  1.03   95%   6.0   99%  13.0   max  38.0   within 4 levels  91.7%
+outline (2 pixels)             pixels    50430   mean  6.02   95%  23.0   99%  31.0   max 109.0   within 4 levels  54.6%
+shadow (to 60 pixels out)      pixels  1247843   mean  0.08   95%   1.0   99%   1.0   max   3.0   within 4 levels 100.0%
+
+regular-light-text.jpg
+face (deeper than the bezel)   pixels  1556004   mean  0.21   95%   1.0   99%   1.0   max   3.0   within 4 levels 100.0%
+band (the bezel)               pixels   659360   mean  0.95   95%   6.0   99%  14.0   max  55.0   within 4 levels  93.2%
+outline (2 pixels)             pixels    50430   mean  0.84   95%   8.0   99%  18.0   max 110.0   within 4 levels  89.3%
+shadow (to 60 pixels out)      pixels  1247843   mean  0.25   95%   1.0   99%   3.0   max   5.0   within 4 levels 100.0%
+
+regular-dark-busy.jpg
+face (deeper than the bezel)   pixels  1556004   mean  0.25   95%   1.0   99%   1.0   max  15.0   within 4 levels  99.8%
+band (the bezel)               pixels   659360   mean  1.33   95%  10.0   99%  23.0   max  74.0   within 4 levels  87.5%
+outline (2 pixels)             pixels    50430   mean  8.86   95%  42.0   99%  61.0   max 111.0   within 4 levels  28.3%
+shadow (to 60 pixels out)      pixels  1247843   mean  0.17   95%   1.0   99%   2.0   max   4.0   within 4 levels 100.0%
+
+regular-light-busy.jpg
+face (deeper than the bezel)   pixels  1556004   mean  0.22   95%   1.0   99%   1.0   max   6.0   within 4 levels 100.0%
+band (the bezel)               pixels   659360   mean  1.27   95%   9.0   99%  22.0   max  71.0   within 4 levels  88.0%
+outline (2 pixels)             pixels    50430   mean  3.94   95%  25.0   99%  43.0   max 128.0   within 4 levels  54.8%
+shadow (to 60 pixels out)      pixels  1247843   mean  0.17   95%   1.0   99%   2.0   max   4.0   within 4 levels 100.0%
+
+clear-grid.jpg
+face (deeper than the bezel)   pixels  1872572   mean  0.28   95%   1.0   99%   2.0   max   3.0   within 4 levels 100.0%
+band (the bezel)               pixels   610868   mean  1.92   95%  15.0   99%  27.0   max  94.0   within 4 levels  86.0%
+outline (2 pixels)             pixels    45304   mean  6.15   95%  28.0   99%  47.0   max 105.0   within 4 levels  50.4%
+shadow (to 60 pixels out)      pixels  1214242   mean  0.10   95%   1.0   99%   1.0   max   1.0   within 4 levels 100.0%
+
+regular-dark-dimmed.jpg
+face (deeper than the bezel)   pixels   636912   mean  0.06   95%   1.0   99%   1.0   max   1.0   within 4 levels 100.0%
+band (the bezel)               pixels   183572   mean  0.28   95%   2.0   99%   7.0   max  13.0   within 4 levels  98.1%
+outline (2 pixels)             pixels    13360   mean  1.79   95%   9.0   99%  13.0   max  43.0   within 4 levels  73.6%
+shadow (to 60 pixels out)      pixels   368308   mean  0.16   95%   1.0   99%   1.0   max  18.0   within 4 levels 100.0%
+
+corners-dark.png, corners-dark-large.png
+face (deeper than the bezel)   pixels   548418   mean  0.00   95%   0.0   99%   0.0   max   0.0   within 4 levels 100.0%
+band (the bezel)               pixels   410257   mean  0.15   95%   1.0   99%   1.0   max  60.0   within 4 levels  99.9%
+outline (2 pixels)             pixels    34844   mean  8.19   95%  30.0   99%  45.0   max  75.0   within 4 levels  60.5%
+shadow (to 60 pixels out)      pixels   694443   mean  0.29   95%   1.0   99%   2.0   max   2.0   within 4 levels 100.0%
+
+corners-light.png, corners-light-large.png
+face (deeper than the bezel)   pixels   548418   mean  0.00   95%   0.0   99%   0.0   max   0.0   within 4 levels 100.0%
+band (the bezel)               pixels   410257   mean  0.16   95%   1.0   99%   2.0   max  36.0   within 4 levels  99.9%
+outline (2 pixels)             pixels    34844   mean  5.76   95%  28.0   99%  55.0   max 123.0   within 4 levels  78.4%
+shadow (to 60 pixels out)      pixels   694443   mean  0.29   95%   1.0   99%   2.0   max   2.0   within 4 levels 100.0%

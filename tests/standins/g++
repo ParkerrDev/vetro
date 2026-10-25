@@ -1,0 +1,3 @@
+#!/bin/bash
+# Stand-in for a C++ compiler: the build is make's, and make is a stand-in too.
+exit 0
