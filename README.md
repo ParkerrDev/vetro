@@ -37,7 +37,7 @@ curl -fsSL https://raw.githubusercontent.com/ParkerrDev/vetro/master/install.sh 
 | **Volume** | The on-screen display. |
 | **Lock screen** | Rounder, and glass over your wallpaper. |
 | **Windows** | See-through windows (the terminal, for one) are glass too. Windows under glass show through it; the desktop's widgets never do. |
-| **Motion** | Genie, jelly and wobble, and one pace for windows, panels, menus and workspaces. |
+| **Motion** | One pace for windows, panels, menus and workspaces, and a genie, jelly and wobble to switch on in Vetro Glass. |
 | **Vetro Glass** | An app to tune all of it by hand, with presets. |
 
 Your theme, wallpaper and terminal colours stay the theme's. While Vetro is on, the shell's colours and the GTK, Qt and Kvantum ones are Vetro's own black and white.
@@ -164,13 +164,13 @@ Also in Vetro Glass, and in the same file:
 | Key | Default | |
 |---|---|---|
 | `pace` | `1` | how quickly windows, panels, menus and workspaces move, `0.5` to `2` |
-| `genie_close` | `1` | a closing window pours itself into the bottom of the screen |
+| `genie_close` | `0` | a closing window pours itself into the bottom of the screen |
 | `genie_open` | `0` | a new window pours out of it |
 | `genie_pointer` | `0` | the genie pours toward the pointer instead |
 | `genie_time` | `0.55` | seconds |
-| `jelly` | `1` | a new window lands with a soft squash and settles |
+| `jelly` | `0` | a new window lands with a soft squash and settles |
 | `jelly_squash` | `0.08` | how far it squashes |
-| `wobble` | `1` | a dragged window bends behind the pointer and jiggles as it settles |
+| `wobble` | `0` | a dragged window bends behind the pointer and jiggles as it settles |
 | `wobble_moves` | `0` | windows the layout moves wobble too |
 | `wobble_time` | `0.55` | seconds to settle |
 | `wobble_bounce` | `0.55` | how far it swings past where it rests |

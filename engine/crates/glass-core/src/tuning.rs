@@ -466,7 +466,7 @@ pub const KNOBS: [Knob; COUNT] = [
             "Genie on close",
             "A closing window pours itself into the bottom of the screen, as a genie into its bottle.",
         ],
-        true,
+        false,
     ),
     motion_switch(
         "genie_open",
@@ -496,7 +496,7 @@ pub const KNOBS: [Knob; COUNT] = [
             "Jelly on open",
             "A new window lands with a soft squash and settles, like jelly.",
         ],
-        true,
+        false,
     ),
     slider(
         "jelly_squash",
@@ -514,7 +514,7 @@ pub const KNOBS: [Knob; COUNT] = [
             "Wobbly windows",
             "A window dragged around bends behind the pointer and jiggles as it settles.",
         ],
-        true,
+        false,
     ),
     motion_switch(
         "wobble_moves",

@@ -1,3 +1,7 @@
+## Motion off as it comes
+
+- `genie_close`, `jelly` and `wobble` are off until they are switched on (Vetro Glass, or `glass.conf`): on by default they made the desktop hard to use. The pace and the springs stay.
+
 ## Windows that move as Apple's do
 
 - The engine's own window animations (`glass_core::motion`, `src/Motion.cpp`), run while `plugin:hyprglass:motion:enabled` is on, as Vetro's look has it:

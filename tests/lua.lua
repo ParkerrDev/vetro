@@ -260,15 +260,16 @@ check("Qt apps go through qt6ct where it is installed", seen.env.QT_QPA_PLATFORM
 seen = run()
 check("and not where it is not", seen.env.QT_QPA_PLATFORMTHEME == nil)
 
--- An engine with the motion: it is turned on, and windows and workspaces
--- move on springs; fades and layers keep their curves.
+-- An engine with the motion: it is turned on, and windows move on springs;
+-- workspaces, fades and layers keep their curves.
 seen = run({ plugin = true, motion = true })
 check("motion: turned on", seen.glass.motion and seen.glass.motion.enabled == true)
 local animations = seen.animations
 check("motion: windows move on a spring", animations.windows.spring == "vetroMove" and animations.windows.bezier == nil)
 check("motion: and open on one that overshoots a little, still popping in",
   animations.windowsIn.spring == "vetroPop" and animations.windowsIn.style == "popin 90%")
-check("motion: workspaces slide on a spring", animations.workspaces.spring == "vetroSlide" and animations.workspaces.style == "slide")
+check("motion: workspaces slide on the quick curve, not a spring",
+  animations.workspaces.bezier == "vetroSnap" and animations.workspaces.spring == nil and animations.workspaces.style == "slide")
 check("motion: every spring asked for is defined as one", (function()
   for _, each in pairs(animations) do
     local curve = each.spring and seen.curves[each.spring]

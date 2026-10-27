@@ -369,14 +369,15 @@ hl.layer_rule({ match = { namespace = "^vetro:backdrop$" }, no_anim = true, anim
 -- frame, which read as no animation at all.
 -- Every curve named here is defined here: a missing one is a config error,
 -- and a config error leaves Hyprland with no keybinds.
--- With the engine's motion, windows and workspaces move on springs instead
--- (2026-10-24: "we need smoother and silkier animations"): a spring keeps its
--- speed when it is sent somewhere new halfway, where a curve starts again from
--- rest, so a window dragged, tiled and tiled again flows from one place to the
--- next. vetroMove all but stops dead, vetroPop overshoots a little, as a
--- bubble does, and vetroSlide not at all. Each settles in about a quarter of a
--- second, at the pace of the tuning. Hyprland's springs take no speed, but the
--- field is still asked for.
+-- With the engine's motion, windows move on springs instead (2026-10-24: "we
+-- need smoother and silkier animations"): a spring keeps its speed when it is
+-- sent somewhere new halfway, where a curve starts again from rest, so a
+-- window dragged, tiled and tiled again flows from one place to the next.
+-- vetroMove all but stops dead and vetroPop overshoots a little, as a bubble
+-- does. Each settles in about a quarter of a second, at the pace of the
+-- tuning. Hyprland's springs take no speed, but the field is still asked for.
+-- Workspaces stay on vetroSnap: on a spring they were slow to switch
+-- (2026-10-27: "make the workspace switching faster (like it was before)").
 if hl.curve and hl.animation then
   hl.curve("vetroSnap", { type = "bezier", points = { { 0.05, 0.9 }, { 0.1, 1.0 } } })
   hl.curve("vetroSpring", { type = "bezier", points = { { 0.05, 0.9 }, { 0.1, 1.05 } } })
@@ -387,8 +388,7 @@ if hl.curve and hl.animation then
   if moving then
     hl.curve("vetroMove", { type = "spring", stiffness = 360, dampening = 35, mass = 1 })
     hl.curve("vetroPop", { type = "spring", stiffness = 300, dampening = 26, mass = 1 })
-    hl.curve("vetroSlide", { type = "spring", stiffness = 340, dampening = 37, mass = 1 })
-    local springs = { windows = "vetroMove", windowsIn = "vetroPop", workspaces = "vetroSlide", specialWorkspace = "vetroSlide" }
+    local springs = { windows = "vetroMove", windowsIn = "vetroPop" }
     sprung = function(each)
       if springs[each.leaf] then
         each.bezier, each.spring = nil, springs[each.leaf]

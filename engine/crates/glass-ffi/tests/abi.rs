@@ -1173,7 +1173,7 @@ fn a_preset_keeps_the_motion_the_user_set() {
         GLASS_OK
     );
     assert_eq!(
-        glass_tuning_set(Some(&mut tuning), GLASS_T_GENIE_CLOSE, 0.0),
+        glass_tuning_set(Some(&mut tuning), GLASS_T_GENIE_CLOSE, 1.0),
         GLASS_OK
     );
     assert_eq!(
@@ -1183,7 +1183,7 @@ fn a_preset_keeps_the_motion_the_user_set() {
     let pace = usize::try_from(GLASS_T_PACE).unwrap();
     let genie = usize::try_from(GLASS_T_GENIE_CLOSE).unwrap();
     assert!((tuning.values[pace] - 1.5).abs() < f32::EPSILON);
-    assert!(tuning.values[genie].abs() < f32::EPSILON);
+    assert!((tuning.values[genie] - 1.0).abs() < f32::EPSILON);
     assert!((tuning.values[0] - 0.55).abs() < f32::EPSILON);
 }
 

@@ -195,14 +195,14 @@ fn clear_to_tinted_runs_in_order() {
 fn a_preset_changes_the_glass_and_leaves_the_motion() {
     let mut mine = Tuning::DEFAULT;
     mine.set(Id::Pace, 1.5);
-    mine.set(Id::GenieClose, 0.0);
+    mine.set(Id::GenieClose, 1.0);
     mine.set(Id::WobbleBounce, 0.2);
     let tinted = Preset::named("tinted")
         .unwrap()
         .tuning()
         .with_motion_of(&mine);
     assert!((tinted.get(Id::Pace) - 1.5).abs() < f32::EPSILON);
-    assert!(!tinted.is_on(Id::GenieClose));
+    assert!(tinted.is_on(Id::GenieClose));
     assert!((tinted.get(Id::WobbleBounce) - 0.2).abs() < f32::EPSILON);
     assert!((tinted.get(Id::Tint) - 0.55).abs() < f32::EPSILON);
     for (id, _) in PRESETS.iter().flat_map(|preset| preset.changes) {
@@ -211,18 +211,18 @@ fn a_preset_changes_the_glass_and_leaves_the_motion() {
 }
 
 #[test]
-fn the_motion_comes_with_the_genie_on_close_jelly_and_wobble() {
+fn the_motion_comes_with_the_genie_jelly_and_wobble_off() {
     let tuning = Tuning::DEFAULT;
     assert!((tuning.get(Id::Pace) - 1.0).abs() < f32::EPSILON);
-    assert!(tuning.is_on(Id::GenieClose));
+    assert!(!tuning.is_on(Id::GenieClose));
     assert!(!tuning.is_on(Id::GenieOpen));
-    assert!(tuning.is_on(Id::Jelly));
-    assert!(tuning.is_on(Id::Wobble));
+    assert!(!tuning.is_on(Id::Jelly));
+    assert!(!tuning.is_on(Id::Wobble));
     assert!(!tuning.is_on(Id::WobbleMoves));
-    let (read, skipped) = parse("pace = 3\ngenie_close = off\nwobble_time = 0.8\n");
+    let (read, skipped) = parse("pace = 3\ngenie_close = on\nwobble_time = 0.8\n");
     assert_eq!(skipped, 0);
     assert!((read.get(Id::Pace) - 2.0).abs() < f32::EPSILON);
-    assert!(!read.is_on(Id::GenieClose));
+    assert!(read.is_on(Id::GenieClose));
     assert!((read.get(Id::WobbleTime) - 0.8).abs() < 1e-6);
     let again = parse(&format(&read)).0;
     for id in Id::ALL {
