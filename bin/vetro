@@ -89,7 +89,22 @@ glass_fits() {
   local built running
   built=$(sed -n 1p "$ENGINE_DIR/hyprglass.built-for" 2>/dev/null || true)
   running=$(hyprctl version -j 2>/dev/null | jq -r '.commit // empty' 2>/dev/null || true)
-  [ -n "$built" ] && [ "$built" = "$running" ]
+  [ -n "$built" ] && [ "$built" = "$running" ] && glass_fits_build
+}
+
+# glass_fits_build: and the very build of that commit that is running, where
+# the stamp has the sum of the binary it was built against (engine/build.sh)
+# and the running Hyprland can be read. Arch's and Omarchy's builds of one
+# commit differ; so do the old and the new Hyprland after an update, until the
+# next login, while the engine is already built for the new one.
+glass_fits_build() {
+  local sum pid
+  sum=$(sed -n 4p "$ENGINE_DIR/hyprglass.built-for" 2>/dev/null || true)
+  [ -n "$sum" ] || return 0
+  pid=$(hyprctl instances -j 2>/dev/null | jq -r --arg s "${HYPRLAND_INSTANCE_SIGNATURE:-}" \
+    '.[] | select(.instance == $s) | .pid' 2>/dev/null | head -n 1 || true)
+  [ -n "$pid" ] && [ -r "/proc/$pid/exe" ] || return 0
+  [ "$(sha256sum <"/proc/$pid/exe" | cut -d' ' -f1)" = "$sum" ]
 }
 
 glass_loaded() { hyprctl plugin list 2>/dev/null | grep -qi '^Plugin hyprglass'; }
@@ -240,7 +255,7 @@ off() {
 }
 
 status() {
-  local theme built
+  local theme built installed
   if is_on; then echo on; else echo off; fi
   if [ ! -s "$ENGINE" ]; then
     echo "engine: not built (vetro build)"
@@ -248,7 +263,14 @@ status() {
     echo "engine: built, not asked (no Hyprland session here)"
   elif ! glass_fits; then
     built=$(sed -n 2p "$ENGINE_DIR/hyprglass.built-for" 2>/dev/null || true)
-    echo "engine: built for Hyprland ${built:-?}, not for the one running (vetro build)"
+    installed=$(command -v Hyprland 2>/dev/null || true)
+    if [ "$(sed -n 1p "$ENGINE_DIR/hyprglass.built-for" 2>/dev/null)" != "$(hyprctl version -j 2>/dev/null | jq -r '.commit // empty' 2>/dev/null)" ]; then
+      echo "engine: built for Hyprland ${built:-?}, not for the one running (vetro build)"
+    elif [ -n "$installed" ] && [ "$(sha256sum <"$installed" | cut -d' ' -f1)" = "$(sed -n 4p "$ENGINE_DIR/hyprglass.built-for" 2>/dev/null)" ]; then
+      echo "engine: built for the Hyprland ${built:-?} just installed, not the earlier build still running (log in again)"
+    else
+      echo "engine: built for another build of Hyprland ${built:-?} than the one running (vetro build)"
+    fi
   elif glass_loaded; then
     echo "engine: loaded"
   else

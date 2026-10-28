@@ -8,6 +8,14 @@ case "${1:-} ${2:-}" in
   "version -j")
     printf '{"branch":"main","commit":"%s","tag":"v0.56.2"}\n' "${FAKE_HYPRLAND_COMMIT:-0123456789abcdef0123456789abcdef01234567}"
     ;;
+  "instances -j")
+    # The running Hyprland's process, when a test names one.
+    if [ -n "${FAKE_HYPRLAND_PID:-}" ]; then
+      printf '[{"instance":"test","pid":%s}]\n' "$FAKE_HYPRLAND_PID"
+    else
+      echo "[]"
+    fi
+    ;;
   "plugin list")
     if [ -e "$S/plugin" ]; then
       printf 'Plugin hyprglass by Hyprnux, forked by Vetro:\n\tHandle: 0x1\n\tVersion: test\n'

@@ -6,7 +6,9 @@
 # look for it:
 #
 #   ~/.local/lib/vetro/hyprglass.so
-#   ~/.local/lib/vetro/hyprglass.built-for   the Hyprland it was built for
+#   ~/.local/lib/vetro/hyprglass.built-for   the Hyprland it was built for:
+#                                            its commit, its tag, the engine
+#                                            commit and the sum of its binary
 #
 #   engine/build.sh           build if there is nothing built for this Hyprland
 #   engine/build.sh --force   build again regardless
@@ -80,9 +82,22 @@ find_pin() {
   [ -n "$pin" ]
 }
 
+# The sum of the Hyprland binary that came with the headers. One commit can
+# be built more than once: Omarchy builds its own Hyprland, with patches of its
+# own, from the same release as Arch's, and the two can lay out the classes the
+# engine reaches into differently. An engine built against one may crash the
+# other, so a new build of the same commit is a new Hyprland here. Empty where
+# no Hyprland is on the PATH.
+hyprland_binary_sum() {
+  local binary
+  binary=$(command -v Hyprland 2>/dev/null) || return 0
+  sha256sum <"$binary" | cut -d' ' -f1
+}
+
 up_to_date() {
   [ -s "$LIB/hyprglass.so" ] && [ "$(sed -n 1p "$STAMP" 2>/dev/null)" = "$hyprland_commit" ] &&
-    [ "$(sed -n 3p "$STAMP" 2>/dev/null)" = "$pin" ]
+    [ "$(sed -n 3p "$STAMP" 2>/dev/null)" = "$pin" ] &&
+    [ "$(sed -n 4p "$STAMP" 2>/dev/null)" = "$hyprland_sum" ]
 }
 
 shallow() { [ "$(git -C "$1" rev-parse --is-shallow-repository 2>/dev/null)" = true ]; }
@@ -143,7 +158,7 @@ install_built() {
     strip --strip-debug "$LIB/hyprglass.so.new" 2>/dev/null || true
   fi
   mv -f "$LIB/hyprglass.so.new" "$LIB/hyprglass.so"
-  printf '%s\n%s\n%s\n' "$hyprland_commit" "$hyprland_tag" "$pin" >"$STAMP.new"
+  printf '%s\n%s\n%s\n%s\n' "$hyprland_commit" "$hyprland_tag" "$pin" "$hyprland_sum" >"$STAMP.new"
   mv -f "$STAMP.new" "$STAMP"
   echo "Built $LIB/hyprglass.so. Hyprland picks it up at the next login or reload."
 }
@@ -161,6 +176,7 @@ esac
 
 hyprland_commit='' hyprland_tag='' pin='' pin_folder=.
 read_installed_hyprland
+hyprland_sum=$(hyprland_binary_sum)
 
 if ! find_pin; then
   echo "engine/build.sh: no engine is pinned for Hyprland ${hyprland_tag:-?} ($hyprland_commit)." >&2

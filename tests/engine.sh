@@ -93,6 +93,24 @@ has "a second run is already built" "$WORK/b2.out" "already built"
 if called "make in"; then fail "built again for nothing"; fi
 built "$hy1" --force >"$WORK/b3.out" 2>&1
 called "make in" || fail "--force did not build"
+
+# another build of the same Hyprland commit is another Hyprland: Omarchy's and
+# Arch's builds of one release differ
+printf 'one build\n' >"$H/.local/bin/Hyprland"
+chmod +x "$H/.local/bin/Hyprland"
+forget_calls
+built "$hy1" >"$WORK/b3a.out" 2>&1
+called "make in" || fail "a Hyprland binary that was not there before did not rebuild"
+is "the stamp: the binary's sum" "$(sha256sum <"$H/.local/bin/Hyprland" | cut -d' ' -f1)" \
+  "$(sed -n 4p "$H/.local/lib/vetro/hyprglass.built-for")"
+forget_calls
+built "$hy1" >"$WORK/b3b.out" 2>&1
+has "the same build of Hyprland is already built" "$WORK/b3b.out" "already built"
+printf 'another build\n' >"$H/.local/bin/Hyprland"
+forget_calls
+built "$hy1" >"$WORK/b3c.out" 2>&1
+called "make in" || fail "another build of the same Hyprland commit did not rebuild"
+rm -f "$H/.local/bin/Hyprland"
 forget_calls
 built "$hy2" >"$WORK/b4.out" 2>&1
 is "a pin for the engine in its folder builds" 0 "$?"

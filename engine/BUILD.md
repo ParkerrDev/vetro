@@ -18,7 +18,8 @@ in `~/.local/lib/vetro`:
 
 ```
 hyprglass.so            the plugin (the engine's name inside Hyprland is hyprglass)
-hyprglass.built-for     the Hyprland commit, its tag, and the engine commit
+hyprglass.built-for     the Hyprland commit, its tag, the engine commit, and the
+                        sum of the Hyprland binary it was built against
 ```
 
 A Hyprland that is not in `pins` is refused (exit 3) and whatever was built is

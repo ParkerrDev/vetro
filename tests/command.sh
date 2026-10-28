@@ -112,6 +112,37 @@ says "status says the engine is for another Hyprland" "engine: built for Hyprlan
 printf '%s\nv0.56.2\n%s\n' "$PINNED_HYPRLAND" "$PINNED_ENGINE" >"$H/.local/lib/vetro/hyprglass.built-for"
 run vetro glass load
 
+# --- nor one built against another build of the same Hyprland commit (Arch's
+# and Omarchy's builds of one release differ); a process stands in for the
+# running Hyprland, and the sum of its binary decides
+run vetro off >/dev/null 2>&1
+sleep 300 &
+running=$!
+sum=$(sha256sum <"/proc/$running/exe" | cut -d' ' -f1)
+printf '%s\nv0.56.2\n%s\n%s\n' "$PINNED_HYPRLAND" "$PINNED_ENGINE" "$(printf other | sha256sum | cut -d' ' -f1)" \
+  >"$H/.local/lib/vetro/hyprglass.built-for"
+run FAKE_HYPRLAND_PID="$running" vetro on >/dev/null 2>&1
+no "an engine for another build is not loaded" test -e "$H/.standin/plugin"
+says "status says it is another build" "engine: built for another build of Hyprland v0.56.2" \
+  run FAKE_HYPRLAND_PID="$running" vetro status
+# the engine built for a Hyprland just installed, while the earlier build runs
+# on until the next login
+printf 'the build just installed\n' >"$H/.local/bin/Hyprland"
+chmod +x "$H/.local/bin/Hyprland"
+printf '%s\nv0.56.2\n%s\n%s\n' "$PINNED_HYPRLAND" "$PINNED_ENGINE" "$(sha256sum <"$H/.local/bin/Hyprland" | cut -d' ' -f1)" \
+  >"$H/.local/lib/vetro/hyprglass.built-for"
+run FAKE_HYPRLAND_PID="$running" vetro glass load
+no "an engine for the build just installed is not loaded into the one running" test -e "$H/.standin/plugin"
+says "status says to log in again" "engine: built for the Hyprland v0.56.2 just installed, not the earlier build still running (log in again)" \
+  run FAKE_HYPRLAND_PID="$running" vetro status
+rm -f "$H/.local/bin/Hyprland"
+printf '%s\nv0.56.2\n%s\n%s\n' "$PINNED_HYPRLAND" "$PINNED_ENGINE" "$sum" >"$H/.local/lib/vetro/hyprglass.built-for"
+run FAKE_HYPRLAND_PID="$running" vetro glass load
+ok "an engine for the build that is running is loaded" test -e "$H/.standin/plugin"
+kill "$running" 2>/dev/null
+wait "$running" 2>/dev/null
+printf '%s\nv0.56.2\n%s\n' "$PINNED_HYPRLAND" "$PINNED_ENGINE" >"$H/.local/lib/vetro/hyprglass.built-for"
+
 # --- off
 forget_calls
 run vetro off >"$WORK/off.out" 2>&1 || fail "vetro off failed: $(tail -n 3 "$WORK/off.out")"

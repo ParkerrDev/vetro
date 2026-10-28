@@ -76,7 +76,7 @@ lacks() {
 # The tools the scripts may use, and no others.
 TOOLS=(bash sh env cat cp mv rm ln mkdir rmdir touch dirname basename readlink date seq sleep head tail sed awk grep
   tr sort uniq cut wc find ls mktemp cmp diff chmod install tac id nice nproc stat tee xargs jq git python3 printf
-  md5sum true false test expr)
+  md5sum sha256sum true false test expr)
 
 make_bin() {
   local tool path
