@@ -1,3 +1,4 @@
+#include "RenderContext.hpp"
 #include "GlassSubsurfaceState.hpp"
 #include "Diagnostics.hpp"
 #include "GlassDecoration.hpp"
@@ -108,7 +109,7 @@ void CGlassSubsurfaceState::sampleAndRedirect(PHLMONITOR monitor, const CBox& tr
     if (!shaderManager.isInitialized() || !monitor)
         return;
 
-    auto source = g_pHyprRenderer->m_renderData.currentFB;
+    auto source = VetroRender::context().m_data.currentFB;
     if (!source)
         return;
 
@@ -128,7 +129,7 @@ void CGlassSubsurfaceState::sampleAndRedirect(PHLMONITOR monitor, const CBox& tr
     const bool backgroundChanged = !m_hasCachedSample || currentGeneration != m_lastSceneGeneration || movedOrResized;
 
     const bool sampleCovered = !backgroundChanged ||
-        GlassRenderer::sampleRegionCovered(transformBox, source, g_pHyprRenderer->m_renderData.damage, monitor);
+        GlassRenderer::sampleRegionCovered(transformBox, source, VetroRender::context().m_data.damage, monitor);
 
     if (!sampleCovered) {
         // The work buffer is cleared outside this frame's damage: sampling now
@@ -190,17 +191,17 @@ void CGlassSubsurfaceState::sampleAndRedirect(PHLMONITOR monitor, const CBox& tr
 
     m_savedCurrentFB = source;
 
-    g_pHyprRenderer->m_renderData.currentFB = sharedFB;
+    VetroRender::context().m_data.currentFB = sharedFB;
     glBindFramebuffer(GL_FRAMEBUFFER, dynamic_cast<Render::GL::CGLFramebuffer*>(sharedFB.get())->getFBID());
 
     CBox clearBox = transformBox.intersection(CBox{0.0, 0.0, static_cast<double>(monitorWidth), static_cast<double>(monitorHeight)}).noNegativeSize().round();
 
     if (std::isfinite(clearBox.x) && std::isfinite(clearBox.y) && std::isfinite(clearBox.w) && std::isfinite(clearBox.h) &&
         clearBox.w > 0.0 && clearBox.h > 0.0) {
-        g_pHyprOpenGL->scissor(clearBox, false);
+        g_pHyprOpenGL->scissor(VetroRender::context(), clearBox, false);
         glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
         glClear(GL_COLOR_BUFFER_BIT);
-        g_pHyprOpenGL->scissor(nullptr);
+        g_pHyprOpenGL->scissor(VetroRender::context(), nullptr);
     }
 
     m_redirectedThisFrame = true;
@@ -209,7 +210,7 @@ void CGlassSubsurfaceState::sampleAndRedirect(PHLMONITOR monitor, const CBox& tr
 void CGlassSubsurfaceState::compositeAndRestore(PHLMONITOR monitor, const CBox& rawBox, const CBox& transformBox,
                                                  CRegion& transformedRegion, float alpha) {
     if (m_savedCurrentFB) {
-        g_pHyprRenderer->m_renderData.currentFB = m_savedCurrentFB;
+        VetroRender::context().m_data.currentFB = m_savedCurrentFB;
         glBindFramebuffer(GL_FRAMEBUFFER, dynamic_cast<Render::GL::CGLFramebuffer*>(m_savedCurrentFB.get())->getFBID());
         m_savedCurrentFB.reset();
     }
@@ -222,7 +223,7 @@ void CGlassSubsurfaceState::compositeAndRestore(PHLMONITOR monitor, const CBox& 
     if (!shaderManager.isInitialized() || !m_hasCachedSample || !monitor)
         return;
 
-    auto target = g_pHyprRenderer->m_renderData.currentFB;
+    auto target = VetroRender::context().m_data.currentFB;
     if (!target)
         return;
 
@@ -300,9 +301,9 @@ void CGlassSubsurfaceState::compositeAndRestore(PHLMONITOR monitor, const CBox& 
                 maskInfo.glassBoxSizePx   = Vector2D(transformedWindowBox.w, transformedWindowBox.h);
                 haveGlassBox              = true;
 
-                const float windowRadius = window->rounding() * static_cast<float>(monitor->m_scale);
+                const float windowRadius = window->presentation().rounding() * static_cast<float>(monitor->m_scale);
                 radii                    = {windowRadius, windowRadius, windowRadius, windowRadius};
-                roundingPower            = window->roundingPower();
+                roundingPower            = window->presentation().roundingPower();
             }
         }
         // else: no parent window (e.g. a layer-shell or standalone surface) —

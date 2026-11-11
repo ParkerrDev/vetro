@@ -1,3 +1,4 @@
+#include "RenderContext.hpp"
 #include "GlassLayerCompositeElement.hpp"
 #include "GlassLayerSurface.hpp"
 #include "GlassRenderer.hpp"
@@ -7,14 +8,16 @@
 CGlassLayerCompositeElement::CGlassLayerCompositeElement(const SGlassLayerCompositeData& data)
     : m_data(data) {}
 
-std::vector<UP<IPassElement>> CGlassLayerCompositeElement::draw() {
+std::vector<UP<IPassElement>> CGlassLayerCompositeElement::draw(Render::CRenderContext& ctx) {
+    const VetroRender::Scope renderScope(ctx);
     if (m_data.layerState && m_data.layerState->getLayerSurface())
-        m_data.layerState->compositeAndRestore(g_pHyprRenderer->m_renderData.pMonitor.lock(), m_data.alpha, m_data.maskSource);
+        m_data.layerState->compositeAndRestore(VetroRender::context().m_data.pMonitor.lock(), m_data.alpha, m_data.maskSource);
 
     return {};
 }
 
-std::optional<CBox> CGlassLayerCompositeElement::boundingBox() {
+std::optional<CBox> CGlassLayerCompositeElement::boundingBox(Render::CRenderContext& ctx) {
+    const VetroRender::Scope renderScope(ctx);
     if (!m_data.layerState)
         return std::nullopt;
 
@@ -24,11 +27,12 @@ std::optional<CBox> CGlassLayerCompositeElement::boundingBox() {
 
     // Same helper as CGlassLayerPassElement::boundingBox(), so the pre- and
     // post-surface elements never disagree about the layer's box.
-    const auto monitor = g_pHyprRenderer->m_renderData.pMonitor.lock();
+    const auto monitor = VetroRender::context().m_data.pMonitor.lock();
     return LayerGeometry::computePaddedLogicalLayerBox(layerSurface, monitor, GlassRenderer::SAMPLE_PADDING_PX);
 }
 
-bool CGlassLayerCompositeElement::needsLiveBlur() {
+bool CGlassLayerCompositeElement::needsLiveBlur(Render::CRenderContext& ctx) {
+    const VetroRender::Scope renderScope(ctx);
     // Always false: Hyprland's CRenderPass::render() asserts a bounding box
     // for any element reporting live blur ("No bounding box for an element
     // with live blur is illegal", Pass.cpp), and this element's boundingBox()
@@ -36,6 +40,7 @@ bool CGlassLayerCompositeElement::needsLiveBlur() {
     return false;
 }
 
-bool CGlassLayerCompositeElement::needsPrecomputeBlur() {
+bool CGlassLayerCompositeElement::needsPrecomputeBlur(Render::CRenderContext& ctx) {
+    const VetroRender::Scope renderScope(ctx);
     return false;
 }

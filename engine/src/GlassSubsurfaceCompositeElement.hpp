@@ -1,4 +1,5 @@
 #pragma once
+#include "RenderContext.hpp"
 
 #include <hyprland/src/render/pass/PassElement.hpp>
 #include <hyprutils/math/Box.hpp>
@@ -26,10 +27,10 @@ class CGlassSubsurfaceCompositeElement : public IPassElement {
     explicit CGlassSubsurfaceCompositeElement(SData data);
     ~CGlassSubsurfaceCompositeElement() override = default;
 
-    std::vector<UP<IPassElement>> draw() override;
-    [[nodiscard]] bool                needsLiveBlur() override;
-    [[nodiscard]] bool                needsPrecomputeBlur() override;
-    [[nodiscard]] std::optional<CBox> boundingBox() override;
+    std::vector<UP<IPassElement>> draw(Render::CRenderContext& ctx = VetroRender::context()) override;
+    [[nodiscard]] bool                needsLiveBlur(Render::CRenderContext& ctx = VetroRender::context()) override;
+    [[nodiscard]] bool                needsPrecomputeBlur(Render::CRenderContext& ctx = VetroRender::context()) override;
+    [[nodiscard]] std::optional<CBox> boundingBox(Render::CRenderContext& ctx = VetroRender::context()) override;
 
     [[nodiscard]] const char*      passName() override { return "CGlassSubsurfaceCompositeElement"; }
     [[nodiscard]] ePassElementType type() override { return EK_CUSTOM; }

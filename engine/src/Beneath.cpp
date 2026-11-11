@@ -1,3 +1,4 @@
+#include "RenderContext.hpp"
 #include "Beneath.hpp"
 #include "Globals.hpp"
 #include "Hash.hpp"
@@ -5,7 +6,7 @@
 #include "WindowGeometry.hpp"
 
 #include <algorithm>
-#include <hyprland/src/desktop/view/Window.hpp>
+#include <hyprland/src/desktop/view/window/Window.hpp>
 #include <hyprland/src/managers/fullscreen/FullscreenController.hpp>
 #include <hyprland/src/render/Renderer.hpp>
 
@@ -43,17 +44,17 @@ namespace {
 namespace Beneath {
 
     void beginFrame() {
-        const auto monitor = g_pHyprRenderer->m_renderData.pMonitor.lock();
+        const auto monitor = VetroRender::context().m_data.pMonitor.lock();
         if (!g_pGlobalState || !monitor)
             return;
         g_pGlobalState->drawnWindows[monitor->m_id].clear();
     }
 
     void windowDrawn() {
-        auto&      renderData = g_pHyprRenderer->m_renderData;
+        auto&      renderData = VetroRender::context().m_data;
         const auto window     = renderData.currentWindow.lock();
         const auto monitor    = renderData.pMonitor.lock();
-        if (!g_pGlobalState || !window || !monitor || g_pHyprRenderer->m_bRenderingSnapshot || RenderGuards::isForeignRender())
+        if (!g_pGlobalState || !window || !monitor || VetroRender::context().m_renderingSnapshot || RenderGuards::isForeignRender())
             return;
         auto& drawn = g_pGlobalState->drawnWindows[monitor->m_id];
         if (drawn.size() >= MAX_DRAWN)
@@ -65,13 +66,13 @@ namespace Beneath {
         // the corners the glass draws a window with (CGlassDecoration::renderPass)
         const bool  unrounded = Fullscreen::controller()->getFullscreenModes(window).internal == Fullscreen::FSMODE_FULLSCREEN;
         const float border    = WindowGeometry::glassBorder(window) * monitor->m_scale;
-        float       radius    = unrounded ? 0.0f : window->rounding() * monitor->m_scale;
+        float       radius    = unrounded ? 0.0f : window->presentation().rounding() * monitor->m_scale;
         if (radius > 0.0f)
             radius += border;
         drawn.push_back(SRect{
             .box    = WindowGeometry::applyMonitorTransform(*box, monitor),
             .radius = radius,
-            .power  = unrounded ? 2.0f : window->roundingPower(),
+            .power  = unrounded ? 2.0f : window->presentation().roundingPower(),
             .window = window,
         });
     }

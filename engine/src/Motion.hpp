@@ -27,6 +27,7 @@ namespace Motion {
     void onClose(PHLWINDOW window);
     // Before a monitor's frame: every animation of it moved on to now.
     void onRenderPre(PHLMONITOR monitor);
+    void onRenderPost(PHLMONITOR monitor);
     void onRenderStage(eRenderStage stage);
     void onMonitorGone(MONITORID monitor);
 

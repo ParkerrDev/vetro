@@ -1,3 +1,4 @@
+#include "RenderContext.hpp"
 #include "Backdrop.hpp"
 #include "Diagnostics.hpp"
 #include "GlassRenderer.hpp"
@@ -47,7 +48,7 @@ namespace {
         uint64_t hash = mix(0xcbf29ce484222325ULL, state.commits);
         for (const auto& ref : monitor->m_layerSurfaceLayers[BACKGROUND]) {
             const auto layer = ref.lock();
-            if (!layer || !layer->m_mapped)
+            if (!layer || !layer->mapped())
                 continue;
             const auto box     = LayerGeometry::computeLayerBox(layer, monitor);
             const auto surface = surfaceOf(layer);
@@ -97,10 +98,10 @@ namespace {
     }
 
     void drawLayers(const PHLMONITOR& monitor, const CRegion& fullDamage) {
-        auto& renderData = g_pHyprRenderer->m_renderData;
+        auto& renderData = VetroRender::context().m_data;
         for (const auto& ref : monitor->m_layerSurfaceLayers[BACKGROUND]) {
             const auto layer = ref.lock();
-            if (!layer || !layer->m_mapped)
+            if (!layer || !layer->mapped())
                 continue;
             const float alpha   = layer->alpha().getTotal();
             const auto  box     = LayerGeometry::computeLayerBox(layer, monitor);
@@ -118,7 +119,7 @@ namespace {
             renderData.primarySurfaceUVTopLeft     = cropped ? topLeft : Vector2D(-1, -1);
             renderData.primarySurfaceUVBottomRight = cropped ? bottomRight : Vector2D(-1, -1);
 
-            g_pHyprRenderer->draw(CTexPassElement::SRenderData{
+            g_pHyprRenderer->draw(VetroRender::context(), CTexPassElement::SRenderData{
                 .tex           = texture,
                 .box           = *box,
                 .a             = alpha,
@@ -130,7 +131,7 @@ namespace {
             // The texture path tracks no buffer of its own: keep the one just
             // read until the frame is done with it.
             if (surface->m_current.buffer && !surface->m_current.buffer->isSynchronous())
-                g_pHyprRenderer->m_usedAsyncBuffers.emplace_back(surface->m_current.buffer);
+                Render::addSurfaceBufferUse(VetroRender::context().m_usedAsyncBuffers, surface, surface->m_current.buffer);
         }
     }
 
@@ -138,18 +139,18 @@ namespace {
     // misc:background_color, then each mapped background layer at its place
     // and fade as Hyprland draws them, then the mip chain the blur reads.
     void draw(const PHLMONITOR& monitor, const SP<Render::IFramebuffer>& target) {
-        auto&          renderData = g_pHyprRenderer->m_renderData;
+        auto&          renderData = VetroRender::context().m_data;
         const Vector2D size       = target->m_size;
 
         // Declared before the framebuffer guard, so it runs after the frame's
         // own target is bound again, on the throwing path too.
         const Hyprutils::Utils::CScopeGuard restoreGLState([&] {
-            g_pHyprOpenGL->scissor(nullptr);
+            g_pHyprOpenGL->scissor(VetroRender::context(), nullptr);
             if (const auto& restored = renderData.currentFB)
                 g_pHyprOpenGL->setViewport(0, 0, static_cast<int>(restored->m_size.x), static_cast<int>(restored->m_size.y));
         });
 
-        auto guard = g_pHyprRenderer->bindTempFB(target);
+        auto guard = std::make_unique<Render::CTempFramebufferScope>(*g_pHyprRenderer, VetroRender::context(), target);
 
         const auto savedProjection      = renderData.projectionType;
         const auto savedFbSize          = renderData.fbSize;
@@ -170,11 +171,11 @@ namespace {
             renderData.transformDamage             = savedTransformDamage;
             // before setProjectionType: RPT_FB recomputes the projection from fbSize
             renderData.fbSize = savedFbSize;
-            g_pHyprRenderer->setProjectionType(savedProjection);
+            g_pHyprRenderer->setProjectionType(VetroRender::context(), savedProjection);
         });
 
         renderData.fbSize = size;
-        g_pHyprRenderer->setProjectionType(Render::RPT_EXPORT);
+        g_pHyprRenderer->setProjectionType(VetroRender::context(), Render::RPT_EXPORT);
         // the boxes and the damage are backdrop pixels, not monitor space
         renderData.transformDamage = false;
         // an overview plugin's modifier would otherwise be applied a second time
@@ -314,7 +315,7 @@ namespace Backdrop {
     }
 
     void beginFrame() {
-        const auto monitor = g_pHyprRenderer->m_renderData.pMonitor.lock();
+        const auto monitor = VetroRender::context().m_data.pMonitor.lock();
         if (!g_pGlobalState || !monitor)
             return;
 
@@ -334,7 +335,7 @@ namespace Backdrop {
     SP<Render::IFramebuffer> get(const PHLMONITOR& monitor, const SP<Render::IFramebuffer>& frame) {
         // Not the monitor's own frame (an overview plugin's, a screenshot's): its
         // size need not be the monitor's.
-        if (!frame || !possible(monitor) || RenderGuards::isForeignRender() || g_pHyprRenderer->m_bRenderingSnapshot)
+        if (!frame || !possible(monitor) || RenderGuards::isForeignRender() || VetroRender::context().m_renderingSnapshot)
             return nullptr;
 
         const int width  = static_cast<int>(monitor->m_pixelSize.x);

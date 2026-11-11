@@ -1,3 +1,4 @@
+#include "RenderContext.hpp"
 // The lens model's side of CGlassLayerSurface (docs/model.md). The classic side,
 // in GlassLayerSurface.cpp, renders the layer into a framebuffer of its own and
 // composites glass and layer together. This side never redirects anything: it
@@ -83,7 +84,7 @@ CBox boxAround(const CBox& a, const CBox& b) {
 // pass repainted. Outside it the framebuffer still shows the previous frame,
 // with this layer and its glass in it.
 bool repaintedThisFrame(const CBox& rect) {
-    return CRegion(rect).subtract(g_pHyprRenderer->m_renderData.damage).empty();
+    return CRegion(rect).subtract(VetroRender::context().m_data.damage).empty();
 }
 
 } // namespace
@@ -198,7 +199,7 @@ std::string CGlassLayerSurface::describeModel() const {
     if (!m_modelActive || !m_model)
         return out;
 
-    out += std::format("      {}{}{}\n", m_model->describeState(), layerSurface->m_mapped ? "" : ", not mapped", m_pendingBackgroundMark ? ", a change behind it held back" : "");
+    out += std::format("      {}{}{}\n", m_model->describeState(), layerSurface->mapped() ? "" : ", not mapped", m_pendingBackgroundMark ? ", a change behind it held back" : "");
 
     for (const auto& pane : m_model->panes()) {
         out += std::format("      pane {:.0f},{:.0f} {:.0f}x{:.0f}px  short side {:.0f}px  frost {}{}\n", pane.box.x, pane.box.y, pane.box.w, pane.box.h, pane.shortSide,
@@ -362,7 +363,7 @@ void CGlassLayerSurface::sampleModelPanes(PHLMONITOR monitor, const SP<Render::I
 
         // A pane that moved reads a different part of the screen.
         const bool needed = !pane.hasSample || pane.dirty || rect != pane.sampled;
-        if (!needed || !layerSurface->m_mapped) {
+        if (!needed || !layerSurface->mapped()) {
             // unchanged behind it, or fading out over pixels that are no longer its background
             Diagnostics::recordLayerCacheHit(monitor->m_id);
             continue;
@@ -408,7 +409,7 @@ void CGlassLayerSurface::drawModel(PHLMONITOR monitor, float alpha, bool xray, c
     if (!layerSurface || !monitor || !m_model)
         return;
 
-    const auto source = g_pHyprRenderer->m_renderData.currentFB;
+    const auto source = VetroRender::context().m_data.currentFB;
     if (!source)
         return;
 

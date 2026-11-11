@@ -1,3 +1,4 @@
+#include "RenderContext.hpp"
 #include "GlassRenderer.hpp"
 #include "Diagnostics.hpp"
 #include "Globals.hpp"
@@ -5,7 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <GLES3/gl32.h>
-#include <hyprland/src/desktop/view/Window.hpp>
+#include <hyprland/src/desktop/view/window/Window.hpp>
 #include <hyprland/src/protocols/core/Compositor.hpp>
 #include <hyprland/src/render/OpenGL.hpp>
 #include <hyprland/src/render/pass/TexPassElement.hpp>
@@ -119,7 +120,7 @@ void sampleBackground(SP<Render::IFramebuffer>& sampleFramebuffer, SP<Render::IF
     // Full-res source pixels this call blits, before any downscale — what the
     // GPU actually reads off the source framebuffer, not the (possibly
     // half-res) destination the sample FBO ends up holding.
-    if (const auto monitor = g_pHyprRenderer->m_renderData.pMonitor.lock())
+    if (const auto monitor = VetroRender::context().m_data.pMonitor.lock())
         Diagnostics::recordSampledPixels(monitor->m_id, static_cast<double>(fullWidth) * static_cast<double>(fullHeight));
 
     int sampleWidth  = map.width;
@@ -204,7 +205,7 @@ void blendOwnContent(SP<Render::IFramebuffer>& sampleFramebuffer, PHLWINDOW wind
 
     // Hyprland renders a transformed window through a redirected pass and blits the
     // result; our untransformed copy would not match what the user sees.
-    if (!window->m_transformers.empty())
+    if (!window->effects().transformers()->empty())
         return;
 
     const auto hlSurface = window->wlSurface();
@@ -220,19 +221,19 @@ void blendOwnContent(SP<Render::IFramebuffer>& sampleFramebuffer, PHLWINDOW wind
     if (fbSize.x != map.width || fbSize.y != map.height)
         return;
 
-    auto& renderData = g_pHyprRenderer->m_renderData;
+    auto& renderData = VetroRender::context().m_data;
 
     // Leave the caller the state sampleBackground leaves: scissor off, viewport from
     // the re-bound framebuffer's own size (monitor sizes are wrong here, #41).
     // Declared before the FB guard so it runs after that framebuffer is back, on the
     // throwing path too.
     const Hyprutils::Utils::CScopeGuard restoreGLState([&] {
-        g_pHyprOpenGL->scissor(nullptr);
+        g_pHyprOpenGL->scissor(VetroRender::context(), nullptr);
         if (const auto& restored = renderData.currentFB)
             g_pHyprOpenGL->setViewport(0, 0, static_cast<int>(restored->m_size.x), static_cast<int>(restored->m_size.y));
     });
 
-    auto guard = g_pHyprRenderer->bindTempFB(sampleFramebuffer);
+    auto guard = std::make_unique<Render::CTempFramebufferScope>(*g_pHyprRenderer, VetroRender::context(), sampleFramebuffer);
 
     const auto  savedProjection      = renderData.projectionType;
     const auto  savedFbSize          = renderData.fbSize;
@@ -257,11 +258,11 @@ void blendOwnContent(SP<Render::IFramebuffer>& sampleFramebuffer, PHLWINDOW wind
         renderData.transformDamage             = savedTransformDamage;
         // before setProjectionType: RPT_FB recomputes the projection from fbSize
         renderData.fbSize = savedFbSize;
-        g_pHyprRenderer->setProjectionType(savedProjection);
+        g_pHyprRenderer->setProjectionType(VetroRender::context(), savedProjection);
     });
 
     renderData.fbSize = fbSize;
-    g_pHyprRenderer->setProjectionType(Render::RPT_EXPORT);
+    g_pHyprRenderer->setProjectionType(VetroRender::context(), Render::RPT_EXPORT);
     // our boxes and damage rects are sample-framebuffer pixels, not monitor space
     renderData.transformDamage = false;
     // an overview plugin's modifier would otherwise be applied a second time
@@ -324,7 +325,7 @@ void blendOwnContent(SP<Render::IFramebuffer>& sampleFramebuffer, PHLWINDOW wind
                 renderData.primarySurfaceUVBottomRight = Vector2D(-1, -1);
             }
 
-            g_pHyprRenderer->draw(CTexPassElement::SRenderData{
+            g_pHyprRenderer->draw(VetroRender::context(), CTexPassElement::SRenderData{
                 .tex           = texture,
                 .box           = map.toSample(framebufferBox),
                 .a             = amount,
@@ -338,7 +339,7 @@ void blendOwnContent(SP<Render::IFramebuffer>& sampleFramebuffer, PHLWINDOW wind
             // The texture path tracks no buffer of its own, and the window's real draw
             // may be discarded as occluded, releasing the buffer we just read.
             if (surface->m_current.buffer && !surface->m_current.buffer->isSynchronous())
-                g_pHyprRenderer->m_usedAsyncBuffers.emplace_back(surface->m_current.buffer);
+                Render::addSurfaceBufferUse(VetroRender::context().m_usedAsyncBuffers, surface, surface->m_current.buffer);
         },
         nullptr);
 
@@ -354,7 +355,7 @@ void blurBackground(SP<Render::IFramebuffer> sampleFramebuffer, float radius, in
     Diagnostics::CScopedStageTimer stageTimer(Diagnostics::EStage::BlurBackground);
 
     // Two ping-pong passes (horizontal, vertical) per iteration.
-    if (const auto monitor = g_pHyprRenderer->m_renderData.pMonitor.lock())
+    if (const auto monitor = VetroRender::context().m_data.pMonitor.lock())
         Diagnostics::recordBlurPasses(monitor->m_id, static_cast<uint64_t>(iterations) * 2);
 
     int width  = static_cast<int>(sampleFramebuffer->m_size.x);
@@ -434,7 +435,7 @@ void applyGlassEffect(SP<Render::IFramebuffer> sampleFramebuffer, SP<Render::IFr
 
     Diagnostics::CScopedStageTimer stageTimer(Diagnostics::EStage::ApplyGlassEffect);
 
-    if (const auto monitor = g_pHyprRenderer->m_renderData.pMonitor.lock()) {
+    if (const auto monitor = VetroRender::context().m_data.pMonitor.lock()) {
         double pixels = rawBox.w * rawBox.h;
         if (frame) {
             pixels = 0.0;
@@ -448,9 +449,9 @@ void applyGlassEffect(SP<Render::IFramebuffer> sampleFramebuffer, SP<Render::IFr
     const auto& uniforms = shaderManager.glassUniforms;
 
     const auto transform = Math::wlTransformToHyprutils(
-        Math::invertTransform(g_pHyprRenderer->m_renderData.pMonitor->m_transform));
+        Math::invertTransform(VetroRender::context().m_data.pMonitor->m_transform));
 
-    Mat3x3 glMatrix = g_pHyprRenderer->projectBoxToTarget(rawBox, transform);
+    Mat3x3 glMatrix = g_pHyprRenderer->projectBoxToTarget(VetroRender::context(), rawBox, transform);
     auto texture    = sampleFramebuffer->getTexture();
 
     glMatrix.transpose();
@@ -511,7 +512,7 @@ void applyGlassEffect(SP<Render::IFramebuffer> sampleFramebuffer, SP<Render::IFr
     glUniform1f(uniforms.bevelShadow,         resolveContext.f(GLASS_F_BEVEL_SHADOW));
 
     // bevel width is defined in logical px; scale it to framebuffer px per monitor
-    const auto monitor = g_pHyprRenderer->m_renderData.pMonitor.lock();
+    const auto monitor = VetroRender::context().m_data.pMonitor.lock();
     glUniform1f(uniforms.monitorScale, monitor && monitor->m_scale > 0.0f ? monitor->m_scale : 1.0f);
 
     uploadThemeUniforms(resolveContext);
@@ -629,10 +630,10 @@ void applyGlassEffect(SP<Render::IFramebuffer> sampleFramebuffer, SP<Render::IFr
     // Only finalDamage is copied to the screen, and elementDamage (which finalDamage is a
     // subset of) already covers every pixel we're visible at, so scissoring to the damage
     // clips no pixel that would otherwise reach the screen.
-    CBox damageExtents = g_pHyprRenderer->m_renderData.damage.copy().intersect(rawBox).getExtents();
+    CBox damageExtents = VetroRender::context().m_data.damage.copy().intersect(rawBox).getExtents();
     const CBox drawn = damageExtents.w > 0 && damageExtents.h > 0 ? damageExtents : rawBox;
     if (!frame) {
-        g_pHyprOpenGL->scissor(drawn);
+        g_pHyprOpenGL->scissor(VetroRender::context(), drawn);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
     } else {
         // A frame: the same quad, clipped to each strip in turn. The strips do
@@ -642,11 +643,11 @@ void applyGlassEffect(SP<Render::IFramebuffer> sampleFramebuffer, SP<Render::IFr
             const CBox part = Glass::toBox(strip).intersection(drawn);
             if (part.w <= 0 || part.h <= 0)
                 continue;
-            g_pHyprOpenGL->scissor(part);
+            g_pHyprOpenGL->scissor(VetroRender::context(), part);
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
         }
     }
-    g_pHyprOpenGL->scissor(nullptr);
+    g_pHyprOpenGL->scissor(VetroRender::context(), nullptr);
 }
 
 } // namespace GlassRenderer

@@ -1,4 +1,5 @@
 #pragma once
+#include "RenderContext.hpp"
 
 #include <hyprland/src/render/Renderer.hpp>
 
@@ -15,7 +16,10 @@ namespace RenderGuards {
 // normal frame's begin()/end(), not just replays, so a bare mainFB check would
 // never see a foreign render as foreign.
 [[nodiscard]] inline bool isForeignRender() {
-    const auto& renderData = g_pHyprRenderer->m_renderData;
+    const auto& ctx = VetroRender::context();
+    if (&ctx != &g_pHyprRenderer->context() || ctx.readOnlyEffects() || ctx.m_renderingCapture)
+        return true;
+    const auto& renderData = ctx.m_data;
 
     if (renderData.mainFB && renderData.currentFB != renderData.mainFB)
         return true;

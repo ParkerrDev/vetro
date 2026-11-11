@@ -1,4 +1,5 @@
 #pragma once
+#include "RenderContext.hpp"
 
 #include "Beneath.hpp"
 #include "GlassRenderer.hpp"
@@ -6,7 +7,7 @@
 #include "PluginConfig.hpp"
 
 #include <chrono>
-#include <hyprland/src/desktop/view/Window.hpp>
+#include <hyprland/src/desktop/view/window/Window.hpp>
 #include <hyprland/src/render/decorations/IHyprWindowDecoration.hpp>
 #include <hyprland/src/render/Framebuffer.hpp>
 #include <hyprland/src/SharedDefs.hpp>
@@ -18,7 +19,7 @@ class CGlassDecoration : public IHyprWindowDecoration {
 
     [[nodiscard]] SDecorationPositioningInfo getPositioningInfo() override;
     void                                     onPositioningReply(const SDecorationPositioningReply& reply) override;
-    void                                     draw(PHLMONITOR monitor, float const& alpha) override;
+    void                                     draw(Render::CRenderContext& ctx, PHLMONITOR monitor, float const& alpha, const Render::SWindowRenderPresentation& presentation) override;
     [[nodiscard]] eDecorationType            getDecorationType() override;
     void                                     updateWindow(PHLWINDOW window) override;
     void                                     damageEntire() override;

@@ -1,3 +1,4 @@
+#include <hyprland/src/desktop/view/window/WindowBackend.hpp>
 #include "BackgroundDamageObserver.hpp"
 
 #include "GlassDecoration.hpp"
@@ -8,7 +9,7 @@
 
 #include <hyprland/src/desktop/view/LayerSurface.hpp>
 #include <hyprland/src/desktop/view/WLSurface.hpp>
-#include <hyprland/src/desktop/view/Window.hpp>
+#include <hyprland/src/desktop/view/window/Window.hpp>
 #include <hyprland/src/output/Monitor.hpp>
 #include <hyprland/src/event/EventBus.hpp>
 #include <hyprland/src/protocols/XDGShell.hpp>
@@ -81,13 +82,13 @@ namespace {
         if (!window)
             return true;
 
-        if (!window->m_isMapped)
+        if (!window->mapped())
             return false;
 
         if (view->type() == VIEW_TYPE_WINDOW && window->isHidden())
             return false;
 
-        return !window->m_workspace || window->m_workspace->m_visible;
+        return !window->m_workspace || window->m_workspace->visible();
     }
 
     // A self-sampling window draws its own content into its glass, so a commit that
@@ -193,7 +194,7 @@ namespace {
             if (resource == root) {
                 // what it redrew, in its own logical pixels
                 const auto wlSurface = CWLSurface::fromResource(resource);
-                CRegion    damage    = wlSurface ? wlSurface->computeDamage() : CRegion{};
+                CRegion    damage    = wlSurface ? wlSurface->computeDamage(wlSurface->getSurfaceBoxGlobal()) : CRegion{};
                 if (damage.empty())
                     state->markContentChanged(std::nullopt);
                 else
@@ -254,13 +255,13 @@ namespace {
         if (!box.has_value())
             return;
 
-        CRegion damage = wlSurface->computeDamage();
+        CRegion damage = wlSurface->computeDamage(box);
         if (damage.empty())
             return;
 
-        // X11 clients draw at their own scale; only a window root carries it
-        if (viewWindow && viewWindow->m_isX11 && viewWindow->m_X11SurfaceScaledBy != 1.f)
-            damage.scale(1.0 / viewWindow->m_X11SurfaceScaledBy);
+        // Match Hyprland window/subsurface damage: X11 buffers use the backend scale.
+        if (committingWindow && committingWindow->backend().isX11())
+            damage.scale(1.0 / committingWindow->backend().surfaceScale());
 
         // the animated origin, not Hyprland's animation goal: it is where the
         // content is actually drawn this frame
@@ -269,7 +270,7 @@ namespace {
 
         for (const auto& [_, state] : g_pGlobalState->layerSurfaces) {
             const auto layer = state->getLayerSurface();
-            if (!layer || !layer->m_mapped)
+            if (!layer || !layer->mapped())
                 continue;
 
             if (!state->liveResampleEnabled())

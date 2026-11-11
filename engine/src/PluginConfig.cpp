@@ -54,7 +54,7 @@ void registerOptions(HANDLE handle) {
                 const std::string name  = std::string(CONFIG_PREFIX) + level + option->key;
                 const double      value = global ? option->globalDefault : -1.0;
                 if (kind == 0)
-                    addConfigValue<Config::Values::Float>(handle, name.c_str(), Config::FLOAT{value});
+                    addConfigValue<Config::Values::Float>(handle, name.c_str(), static_cast<Config::FLOAT>(value));
                 else
                     addConfigValue<Config::Values::Int>(handle, name.c_str(), Config::INTEGER{static_cast<int64_t>(value)});
             }

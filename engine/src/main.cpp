@@ -1,3 +1,4 @@
+#include "RenderContext.hpp"
 #include "BackgroundDamageObserver.hpp"
 #include "Beneath.hpp"
 #include "Diagnostics.hpp"
@@ -21,7 +22,7 @@
 #include "Tuning.hpp"
 
 #include <hyprland/src/Compositor.hpp>
-#include <hyprland/src/desktop/Workspace.hpp>
+#include <hyprland/src/workspace/HLWorkspace.hpp>
 #include <hyprland/src/desktop/view/LayerSurface.hpp>
 #include <hyprland/src/state/WorkspaceState.hpp>
 #include <hyprland/src/desktop/view/WLSurface.hpp>
@@ -85,11 +86,11 @@ static void onMonitorGone(PHLMONITOR monitor) {
 }
 
 static void onNewWindow(PHLWINDOW window) {
-    if (std::ranges::any_of(window->m_windowDecorations,
+    if (std::ranges::any_of(window->presentation().decorations(),
                             [](const auto& decoration) { return decoration->getDisplayName() == "HyprGlass"; }))
         return;
 
-    auto decoration = makeUnique<CGlassDecoration>(window);
+    auto decoration = makeShared<CGlassDecoration>(window);
     g_pGlobalState->decorations.emplace_back(decoration);
     decoration->m_self = decoration;
     HyprlandAPI::addWindowDecoration(PHANDLE, window, std::move(decoration));
@@ -124,7 +125,7 @@ static void drawGlassForFullscreenWindow(const PHLWINDOW& window, const PHLMONIT
         return;
 
     if (auto* deco = glassDecorationFor(window))
-        deco->draw(monitor, 1.f); // alpha unused, recomputed in renderPass
+        deco->draw(VetroRender::context(), monitor, 1.f, window->presentation().renderPresentation()); // alpha unused, recomputed in renderPass
 }
 
 // ── Duplicate window copies ──────────────────────────────────────────────────
@@ -134,7 +135,7 @@ static void drawGlassForFullscreenWindow(const PHLWINDOW& window, const PHLMONIT
 static bool otherSpecialWorkspaceVisible(const PHLWORKSPACE& workspace) {
     for (const auto& ref : State::workspaceState()->workspaces()) {
         const auto other = ref.lock();
-        if (!other || other == workspace || !other->m_isSpecialWorkspace)
+        if (!other || other == workspace || !(other->type() == Workspace::eWorkspaceType::SPECIAL))
             continue;
         if (other->m_alpha->value() > 0.f)
             return true;
@@ -154,16 +155,16 @@ static bool isRedundantCopy(const PHLWINDOW& window, const PHLMONITOR& monitor) 
     const auto& dedupe = g_pGlobalState->dedupe;
 
     // the "and floating ones too" loop, below the fullscreen window
-    if (!window->m_isFloating)
+    if (!window->isFloating())
         return false;
 
     // pinned windows get a third render after the workspace passes, and nothing
     // in the render stages tells it apart from these two
-    if (window->m_pinned)
+    if ((window->m_state & Desktop::View::WINDOW_STATE_PINNED))
         return false;
 
     // the "then render windows over fullscreen" loop must redraw it
-    if (!window->m_isMapped)
+    if (!window->mapped())
         return false;
 
     // this must be the copy below the fullscreen window, which is rendered
@@ -187,16 +188,16 @@ static bool isRedundantCopy(const PHLWINDOW& window, const PHLMONITOR& monitor) 
     if (!fullscreenWindow || fullscreenWindow->m_workspace != workspace || !Fullscreen::controller()->isFullscreen(fullscreenWindow))
         return false;
 
-    if (window->m_monitor == workspace->m_monitor && workspace->m_isSpecialWorkspace != window->onSpecialWorkspace())
+    if (window->m_monitor == workspace->m_monitor && (workspace->type() == Workspace::eWorkspaceType::SPECIAL) != window->onSpecialWorkspace())
         return false;
-    if (workspace->m_isSpecialWorkspace && (window->m_monitor != workspace->m_monitor || otherSpecialWorkspaceVisible(workspace)))
+    if ((workspace->type() == Workspace::eWorkspaceType::SPECIAL) && (window->m_monitor != workspace->m_monitor || otherSpecialWorkspaceVisible(workspace)))
         return false;
 
     if (window->isFadingOutUnderFullscreen() || !window->shouldRenderOverFullscreen())
         return false;
 
     // the pre-filter both loops share
-    if (window->alphaValue(Desktop::View::WINDOW_ALPHA_FADE) * window->alphaValue(Desktop::View::WINDOW_ALPHA_FULLSCREEN) == 0.f)
+    if (window->presentation().alphaValue(Desktop::View::WINDOW_ALPHA_FADE) * window->presentation().alphaValue(Desktop::View::WINDOW_ALPHA_FULLSCREEN) == 0.f)
         return false;
 
     return g_pHyprRenderer->shouldRenderWindow(window, monitor);
@@ -205,11 +206,11 @@ static bool isRedundantCopy(const PHLWINDOW& window, const PHLMONITOR& monitor) 
 static void beginWindowRender() {
     // the real monitor pass only: overview/screencopy framebuffers and snapshots
     // render the window once and have no scene behind to sample
-    if (g_pHyprRenderer->m_renderData.projectionType != Render::RPT_MONITOR || g_pHyprRenderer->m_bRenderingSnapshot)
+    if (VetroRender::context().m_data.projectionType != Render::RPT_MONITOR || VetroRender::context().m_renderingSnapshot)
         return;
 
-    const auto window  = g_pHyprRenderer->m_renderData.currentWindow.lock();
-    const auto monitor = g_pHyprRenderer->m_renderData.pMonitor.lock();
+    const auto window  = VetroRender::context().m_data.currentWindow.lock();
+    const auto monitor = VetroRender::context().m_data.pMonitor.lock();
     if (!window || !monitor)
         return;
 
@@ -232,7 +233,7 @@ static void beginWindowRender() {
         // the fullscreen window. Our own glass is skipped in queueGlassPass.
         else if (!dedupe.guard && isRedundantCopy(window, monitor)) {
             dedupe.sink.clear();
-            dedupe.guard = g_pHyprRenderer->redirectPass(&dedupe.sink);
+            dedupe.guard = g_pHyprRenderer->redirectPass(VetroRender::context(), &dedupe.sink);
             dedupe.dropped.push_back(window.get());
         }
     }
@@ -259,7 +260,7 @@ static void onRenderStage(eRenderStage stage) {
             // which emits no RENDER_PRE_WINDOWS
             ++g_pGlobalState->frameSerial;
             g_pGlobalState->dedupe.reset();
-            if (const auto monitor = g_pHyprRenderer->m_renderData.pMonitor.lock())
+            if (const auto monitor = VetroRender::context().m_data.pMonitor.lock())
                 Diagnostics::recordFrame(monitor->m_id);
             // Subsurface item glass has no per-surface destroy signal to hang
             // an eager erase off (unlike layers/windows), so dead entries are
@@ -418,10 +419,11 @@ static void refreshSurfaceObserver() {
     BackgroundDamageObserver::refreshEnabled();
 }
 
-using renderLayerFn = void (*)(Render::IHyprRenderer*, PHLLS, PHLMONITOR, const Time::steady_tp&, bool, bool);
+using renderLayerFn = void (*)(Render::IHyprRenderer*, Render::CRenderContext&, PHLLS, PHLMONITOR, const Time::steady_tp&, bool, bool, bool);
 
-static void hkRenderLayer(Render::IHyprRenderer* thisptr, PHLLS layerSurface, PHLMONITOR monitor,
-                           const Time::steady_tp& now, bool popups, bool lockscreen) {
+static void hkRenderLayer(Render::IHyprRenderer* thisptr, Render::CRenderContext& ctx, PHLLS layerSurface, PHLMONITOR monitor,
+                           const Time::steady_tp& now, bool popups, bool lockscreen, bool workspaceScene) {
+    const VetroRender::Scope renderScope(ctx);
     const auto& config = g_pGlobalState->config;
 
     // layers:enabled can flip without a config reload (hyprctl keyword), so follow it
@@ -433,8 +435,8 @@ static void hkRenderLayer(Render::IHyprRenderer* thisptr, PHLLS layerSurface, PH
     // pipeline while that snapshot is being captured: the snapshot framebuffer
     // starts transparent/black, so sampling it as a background can bake a black
     // rectangle into the fade-out snapshot.
-    if (g_pHyprRenderer->m_bRenderingSnapshot) {
-        ((renderLayerFn)g_pGlobalState->renderLayerHook->m_original)(thisptr, layerSurface, monitor, now, popups, lockscreen);
+    if (VetroRender::context().m_renderingSnapshot) {
+        ((renderLayerFn)g_pGlobalState->renderLayerHook->m_original)(thisptr, ctx, layerSurface, monitor, now, popups, lockscreen, workspaceScene);
         return;
     }
 
@@ -442,14 +444,14 @@ static void hkRenderLayer(Render::IHyprRenderer* thisptr, PHLLS layerSurface, PH
     // no layer registration. Its framebuffer holds content the real frame must not
     // inherit, and its geometry is not the one our caches are keyed on.
     if (RenderGuards::isForeignRender()) {
-        ((renderLayerFn)g_pGlobalState->renderLayerHook->m_original)(thisptr, layerSurface, monitor, now, popups, lockscreen);
+        ((renderLayerFn)g_pGlobalState->renderLayerHook->m_original)(thisptr, ctx, layerSurface, monitor, now, popups, lockscreen, workspaceScene);
         return;
     }
 
     // A locked screen shows the lock and nothing else. Glass injected here would
     // lie over it: the panes of cards whose own content the lock is hiding.
     if (g_pSessionLockManager && g_pSessionLockManager->isSessionLocked()) {
-        ((renderLayerFn)g_pGlobalState->renderLayerHook->m_original)(thisptr, layerSurface, monitor, now, popups, lockscreen);
+        ((renderLayerFn)g_pGlobalState->renderLayerHook->m_original)(thisptr, ctx, layerSurface, monitor, now, popups, lockscreen, workspaceScene);
         return;
     }
 
@@ -472,14 +474,14 @@ static void hkRenderLayer(Render::IHyprRenderer* thisptr, PHLLS layerSurface, PH
             it = layerStates.emplace(rawPtr, std::make_shared<CGlassLayerSurface>(layerSurface)).first;
         }
 
-        if (!layerSurface->m_mapped) {
-            ((renderLayerFn)g_pGlobalState->renderLayerHook->m_original)(thisptr, layerSurface, monitor, now, popups, lockscreen);
+        if (!layerSurface->mapped()) {
+            ((renderLayerFn)g_pGlobalState->renderLayerHook->m_original)(thisptr, ctx, layerSurface, monitor, now, popups, lockscreen, workspaceScene);
             return;
         }
 
         float alpha = layerSurface->alpha().getTotal();
         if (alpha < 0.001f) {
-            ((renderLayerFn)g_pGlobalState->renderLayerHook->m_original)(thisptr, layerSurface, monitor, now, popups, lockscreen);
+            ((renderLayerFn)g_pGlobalState->renderLayerHook->m_original)(thisptr, ctx, layerSurface, monitor, now, popups, lockscreen, workspaceScene);
             return;
         }
 
@@ -487,7 +489,7 @@ static void hkRenderLayer(Render::IHyprRenderer* thisptr, PHLLS layerSurface, PH
         // explicit empty region): render as Hyprland normally would
         const auto maskSource = it->second->resolveMaskSource();
         if (maskSource == CGlassLayerSurface::EMaskSource::NONE) {
-            ((renderLayerFn)g_pGlobalState->renderLayerHook->m_original)(thisptr, layerSurface, monitor, now, popups, lockscreen);
+            ((renderLayerFn)g_pGlobalState->renderLayerHook->m_original)(thisptr, ctx, layerSurface, monitor, now, popups, lockscreen, workspaceScene);
             return;
         }
 
@@ -511,7 +513,7 @@ static void hkRenderLayer(Render::IHyprRenderer* thisptr, PHLLS layerSurface, PH
             if (const auto box = LayerGeometry::computeLayerBox(layerSurface, monitor))
                 preData.under = Beneath::under(monitor, box->copy().expand(PANE_REACH), nullptr);
         }
-        g_pHyprRenderer->m_renderPass.add(makeUnique<CGlassLayerPassElement>(preData));
+        VetroRender::context().m_pass.add(makeUnique<CGlassLayerPassElement>(preData));
 
         const bool manageBlur = config.layersManageBlur && **config.layersManageBlur;
         std::optional<SLayerBlurSuppression> blurSuppression;
@@ -523,13 +525,13 @@ static void hkRenderLayer(Render::IHyprRenderer* thisptr, PHLLS layerSurface, PH
         // Original renderLayer: surface renders into the redirected temp FBO.
         // The suppression must wrap only this call: shouldBlur() runs inside it,
         // and the composite element must later see the real protocol state.
-        ((renderLayerFn)g_pGlobalState->renderLayerHook->m_original)(thisptr, layerSurface, monitor, now, popups, lockscreen);
+        ((renderLayerFn)g_pGlobalState->renderLayerHook->m_original)(thisptr, ctx, layerSurface, monitor, now, popups, lockscreen, workspaceScene);
         blurSuppression.reset();
 
         // Post-surface: restore currentFB, apply glass masked by temp FBO alpha, blit surface
         if (!model) {
             CGlassLayerCompositeElement::SGlassLayerCompositeData postData{it->second, alpha, maskSource};
-            g_pHyprRenderer->m_renderPass.add(makeUnique<CGlassLayerCompositeElement>(postData));
+            VetroRender::context().m_pass.add(makeUnique<CGlassLayerCompositeElement>(postData));
         }
 
         it->second->damageIfMoved();
@@ -537,7 +539,7 @@ static void hkRenderLayer(Render::IHyprRenderer* thisptr, PHLLS layerSurface, PH
     }
 
     // Call the original renderLayer
-    ((renderLayerFn)g_pGlobalState->renderLayerHook->m_original)(thisptr, layerSurface, monitor, now, popups, lockscreen);
+    ((renderLayerFn)g_pGlobalState->renderLayerHook->m_original)(thisptr, ctx, layerSurface, monitor, now, popups, lockscreen, workspaceScene);
 }
 
 // ── Subsurface item glass support ────────────────────────────────────────────
@@ -573,6 +575,13 @@ static bool subsurfaceGlassEnabledForWindow(const PHLWINDOW& window) {
 }
 
 static void hkRenderPassAdd(Render::CRenderPass* pass, UP<IPassElement>&& el) {
+    // The hook has no context argument. Only intercept the pass belonging to
+    // our scoped context (or the main monitor context); foreign captures may
+    // build passes without going through our layer/decorations callbacks.
+    if (pass != &g_pHyprRenderer->currentPass(VetroRender::context())) {
+        callOriginalRenderPassAdd(pass, std::move(el));
+        return;
+    }
     // Hot path: every pass element of every kind (windows, layers, popups,
     // rects, cursors, snapshots...), on every monitor, every frame, funnels
     // through here — whether or not item glass is used anywhere. The
@@ -610,7 +619,7 @@ static void hkRenderPassAdd(Render::CRenderPass* pass, UP<IPassElement>&& el) {
     // reasoning as hkRenderLayer. A foreign render (overview/screencopy replay,
     // or one with its own render modifier already set) must not create or
     // touch any of our per-surface state either.
-    if (g_pHyprRenderer->m_bRenderingSnapshot || RenderGuards::isForeignRender()) {
+    if (VetroRender::context().m_renderingSnapshot || RenderGuards::isForeignRender()) {
         callOriginalRenderPassAdd(pass, std::move(el));
         return;
     }
@@ -753,12 +762,11 @@ void scheduleShadowsForWindowGlass() {
 
 // ── Hook target resolution ───────────────────────────────────────────────────
 
-// Hyprland 0.56.2 symbols. Itanium mangling encodes the full signature, so a
+// Hyprland 0.57.1 symbols. Itanium mangling encodes the full signature, so a
 // match is exactly the overload the hooks were written for.
 namespace HookSymbols {
     inline constexpr auto RENDER_LAYER =
-        "_ZN6Render13IHyprRenderer11renderLayerEN9Hyprutils6Memory14CSharedPointerIN7Desktop4View13CLayerSurfaceEEENS3_IN7Monitor8CMonitorEEERKNSt6chrono10time_"
-        "pointINSB_3_V212steady_clockENSB_8durationIlSt5ratioILl1ELl1000000000EEEEEEbb";
+        "_ZN6Render13IHyprRenderer11renderLayerERNS_14CRenderContextEN9Hyprutils6Memory14CSharedPointerIN7Desktop4View13CLayerSurfaceEEENS5_IN7Monitor8CMonitorEEERKNSt6chrono10time_pointINSD_3_V212steady_clockENSD_8durationIlSt5ratioILl1ELl1000000000EEEEEEbbb";
     inline constexpr auto RENDER_PASS_ADD = "_ZN6Render11CRenderPass3addEON9Hyprutils6Memory14CUniquePointerI12IPassElementEE";
 }
 
@@ -867,13 +875,27 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
         }));
 
     g_pGlobalState->listeners.push_back(Event::bus()->m_events.render.stage.listen(
-        [](eRenderStage stage) { onRenderStage(stage); }));
+        [](const Event::SRenderStageEvent& event) {
+            if (event.stage == RENDER_POST) {
+                onRenderStage(event.stage);
+                Motion::onRenderPost(event.monitor);
+                return;
+            }
+            if (!event.context) return;
+            const VetroRender::Scope renderScope(event.context->get());
+            onRenderStage(event.stage); }));
     g_pGlobalState->listeners.push_back(Event::bus()->m_events.render.pre.listen([](PHLMONITOR monitor) { Motion::onRenderPre(monitor); }));
-    g_pGlobalState->listeners.push_back(Event::bus()->m_events.render.stage.listen([](eRenderStage stage) { Motion::onRenderStage(stage); }));
+    g_pGlobalState->listeners.push_back(Event::bus()->m_events.render.stage.listen([](const Event::SRenderStageEvent& event) {
+            if (!event.context) return;
+            const VetroRender::Scope renderScope(event.context->get());
+            const auto stage = event.stage; Motion::onRenderStage(stage); }));
 
     // Which windows lie under a piece of glass: the frame's windows, in the order
     // Hyprland draws them (Beneath.hpp).
-    g_pGlobalState->listeners.push_back(Event::bus()->m_events.render.stage.listen([](eRenderStage stage) {
+    g_pGlobalState->listeners.push_back(Event::bus()->m_events.render.stage.listen([](const Event::SRenderStageEvent& event) {
+            if (!event.context) return;
+            const VetroRender::Scope renderScope(event.context->get());
+            const auto stage = event.stage;
         if (stage == RENDER_BEGIN)
             Beneath::beginFrame();
         else if (stage == RENDER_POST_WINDOW)
@@ -885,17 +907,23 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     // a change. Both fire inside renderMonitor() strictly before endRender() runs
     // the render pass, so a bump here reaches this same frame's resample checks.
     g_pGlobalState->listeners.push_back(Event::bus()->m_events.render.stage.listen(
-        [](eRenderStage stage) {
+        [](const Event::SRenderStageEvent& event) {
+            if (!event.context) return;
+            const VetroRender::Scope renderScope(event.context->get());
+            const auto stage = event.stage;
             if (stage != RENDER_BEGIN)
                 return;
-            if (const auto monitor = g_pHyprRenderer->m_renderData.pMonitor.lock())
+            if (const auto monitor = VetroRender::context().m_data.pMonitor.lock())
                 g_pGlobalState->renderFingerprints[monitor->m_id].runningHash = 0;
         }));
     g_pGlobalState->listeners.push_back(Event::bus()->m_events.render.stage.listen(
-        [](eRenderStage stage) {
+        [](const Event::SRenderStageEvent& event) {
+            if (!event.context) return;
+            const VetroRender::Scope renderScope(event.context->get());
+            const auto stage = event.stage;
             if (stage != RENDER_LAST_MOMENT)
                 return;
-            const auto monitor = g_pHyprRenderer->m_renderData.pMonitor.lock();
+            const auto monitor = VetroRender::context().m_data.pMonitor.lock();
             if (!monitor)
                 return;
             auto& fingerprint = g_pGlobalState->renderFingerprints[monitor->m_id];
@@ -945,15 +973,15 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     Tuning::load();
 
     for (auto& window : Desktop::viewState()->windows()) {
-        if (window->isHidden() || !window->m_isMapped)
+        if (window->isHidden() || !window->mapped())
             continue;
         onNewWindow(window);
     }
 
     // Hook renderLayer for layer surface glass support
-    // Fallback match for the overload Render::IHyprRenderer::renderLayer(PHLLS, PHLMONITOR, steady_tp, bool, bool)
+    // Fallback requires the 0.57 context-aware layer overload.
     void* const renderLayerAddress = resolveHyprlandFunction(HookSymbols::RENDER_LAYER, "renderLayer", [](const SFunctionMatch& match) {
-        return match.demangled.contains("renderLayer") && match.demangled.contains("LayerSurface");
+        return match.demangled.contains("renderLayer(Render::CRenderContext&,") && match.demangled.contains("LayerSurface") && match.demangled.ends_with("bool, bool, bool)");
     });
     const bool renderLayerFound = renderLayerAddress != nullptr;
     if (renderLayerFound) {
@@ -1034,11 +1062,11 @@ APICALL EXPORT void PLUGIN_EXIT() {
     // drop the redirect and the sink's elements while the plugin is still mapped
     g_pGlobalState->dedupe.reset();
 
-    g_pHyprRenderer->m_renderPass.removeAllOfType("CGlassPassElement");
-    g_pHyprRenderer->m_renderPass.removeAllOfType("CGlassLayerPassElement");
-    g_pHyprRenderer->m_renderPass.removeAllOfType("CGlassLayerCompositeElement");
-    g_pHyprRenderer->m_renderPass.removeAllOfType("CGlassSubsurfacePassElement");
-    g_pHyprRenderer->m_renderPass.removeAllOfType("CGlassSubsurfaceCompositeElement");
+    VetroRender::context().m_pass.removeAllOfType("CGlassPassElement");
+    VetroRender::context().m_pass.removeAllOfType("CGlassLayerPassElement");
+    VetroRender::context().m_pass.removeAllOfType("CGlassLayerCompositeElement");
+    VetroRender::context().m_pass.removeAllOfType("CGlassSubsurfacePassElement");
+    VetroRender::context().m_pass.removeAllOfType("CGlassSubsurfaceCompositeElement");
     Backdrop::clear();
     // its transformers are in this library, and Hyprland's animations go back to the config's pace
     Motion::exit();

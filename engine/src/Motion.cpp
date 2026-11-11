@@ -1,3 +1,5 @@
+#include <hyprland/src/desktop/view/window/WindowMetadata.hpp>
+#include "RenderContext.hpp"
 #include "Motion.hpp"
 #include "GlassDecoration.hpp"
 #include "Globals.hpp"
@@ -20,12 +22,12 @@
 
 #include <hyprland/src/animation/AnimationManager.hpp>
 #include <hyprland/src/config/shared/animation/AnimationTree.hpp>
-#include <hyprland/src/desktop/Workspace.hpp>
+#include <hyprland/src/workspace/HLWorkspace.hpp>
 #include <hyprland/src/desktop/state/FadingOutState.hpp>
 #include <hyprland/src/desktop/state/FocusState.hpp>
 #include <hyprland/src/desktop/state/ViewState.hpp>
 #include <hyprland/src/desktop/state/WindowFadeout.hpp>
-#include <hyprland/src/desktop/view/Window.hpp>
+#include <hyprland/src/desktop/view/window/Window.hpp>
 #include <hyprland/src/layout/LayoutManager.hpp>
 #include <hyprland/src/layout/supplementary/DragController.hpp>
 #include <hyprland/src/managers/input/InputManager.hpp>
@@ -428,9 +430,9 @@ namespace {
             glDisable(GL_SCISSOR_TEST);
         blit(target, glass.box, glass.copy, {0, 0, glass.box.w, glass.box.h});
         const float scale   = monitor->m_scale;
-        const float rounded = window->rounding() * scale;
+        const float rounded = window->presentation().rounding() * scale;
         glass.radius        = rounded > 0.f ? rounded + WindowGeometry::glassBorder(window) * scale : 0.f;
-        glass.power         = window->roundingPower();
+        glass.power         = window->presentation().roundingPower();
     }
 
     // Whether a window is kept for the genie: the window with the focus, which
@@ -450,7 +452,7 @@ namespace {
     std::optional<CBox> drawnBox(const PHLWINDOW& window, const PHLMONITOR& monitor) {
         CBox       box       = window->getFullWindowBoundingBox();
         const auto workspace = window->m_workspace;
-        box.translate((window->m_pinned || !workspace ? Vector2D{} : workspace->m_renderOffset->value()) + window->m_floatingOffset - monitor->m_position);
+        box.translate(((window->m_state & Desktop::View::WINDOW_STATE_PINNED) || !workspace ? Vector2D{} : workspace->m_renderOffset->value()) + window->presentation().floatingOffset() - monitor->m_position);
         box.scale(monitor->m_scale);
         if (!std::isfinite(box.x) || !std::isfinite(box.y) || box.w < 1.0 || box.h < 1.0)
             return std::nullopt;
@@ -470,11 +472,11 @@ namespace {
         return made > 0 ? cells : 0;
     }
 
-    SP<Render::IFramebuffer>& outBuffer(const PHLMONITOR& monitor, bool matte, const SP<Render::IFramebuffer>& like) {
+    SP<Render::IFramebuffer>& outBuffer(const PHLMONITOR& monitor, bool matte, const SP<Render::IFramebuffer>& like, const CBox& canvas) {
         auto& buffers = s_state->buffers[monitor->m_id];
         buffers.used  = Clock::now();
         auto& out     = buffers.out[matte ? 1 : 0];
-        ensure(out, matte ? "hyprglass-motion-matte" : "hyprglass-motion", static_cast<int>(like->m_size.x), static_cast<int>(like->m_size.y), like->m_drmFormat);
+        ensure(out, matte ? "hyprglass-motion-matte" : "hyprglass-motion", static_cast<int>(canvas.w), static_cast<int>(canvas.h), like->m_drmFormat);
         return out;
     }
 
@@ -487,14 +489,37 @@ namespace {
       public:
         explicit CMotionTransformer(PHLWINDOWREF window) : m_window(std::move(window)) {}
 
-        SP<Render::IFramebuffer> transform(SP<Render::IFramebuffer> in) override {
-            if (!s_state || !in || !in->getTexture() || g_pHyprRenderer->m_bRenderingSnapshot)
-                return in;
+        bool active() const override { return m_active; }
+        void deactivate() { m_active = false; }
+
+        CBox transformedExtents(const CBox& currentBox) const override {
+            const auto window = m_window.lock();
+            const auto monitor = window ? window->m_monitor.lock() : nullptr;
+            const auto state = find(window);
+            if (!state || !normal(monitor)) return currentBox;
+            const CBox pixels = currentBox.copy().scale(monitor->m_scale);
+            if (!windowMesh(*state, pixels)) return currentBox;
+            double x0 = pixels.x, y0 = pixels.y, x1 = pixels.x + pixels.w, y1 = pixels.y + pixels.h;
+            const auto& points = s_state->points;
+            for (size_t i = 0; i + 1 < points.size(); i += 2) {
+                x0 = std::min(x0, static_cast<double>(points[i]));
+                y0 = std::min(y0, static_cast<double>(points[i + 1]));
+                x1 = std::max(x1, static_cast<double>(points[i]));
+                y1 = std::max(y1, static_cast<double>(points[i + 1]));
+            }
+            return CBox{x0, y0, x1 - x0, y1 - y0}.expand(1.0).scale(1.0 / monitor->m_scale);
+        }
+
+        Render::SWindowTransformBuffer transform(Render::CRenderContext& ctx, const Render::SWindowTransformBuffer& input, const Render::SWindowTransformContext& context) override {
+            const VetroRender::Scope renderScope(ctx);
+            const auto& in = input.framebuffer;
+            if (!s_state || !in || !in->getTexture() || context.standalone || context.renderingSnapshot || VetroRender::context().m_renderingSnapshot)
+                return input;
             const auto window  = m_window.lock();
             auto*      state   = find(window);
-            const auto monitor = g_pHyprRenderer->m_renderData.pMonitor.lock();
+            const auto monitor = VetroRender::context().m_data.pMonitor.lock();
             if (!state || !normal(monitor) || !ready())
-                return in;
+                return input;
 
             // Hyprland asks twice for a window with its blur on: the window, then the blur's matte
             const uint64_t frame = g_pGlobalState->frameSerial;
@@ -505,34 +530,44 @@ namespace {
             const bool matte = state->transforms++ > 0;
             ++s_state->counters.transforms;
 
-            const auto box   = drawnBox(window, monitor);
-            const auto cells = box ? windowMesh(*state, *box) : 0;
+            const CBox box = context.currentBox.copy().scale(monitor->m_scale);
+            const CBox canvas = Render::pixelBoxForLogical(context.outputBox.copy().expand(1.0 / monitor->m_scale), monitor->m_scale);
+            const auto cells = canvas.empty() ? 0 : windowMesh(*state, box);
             if (!cells)
-                return in;
+                return input;
             ++s_state->counters.meshes;
 
-            auto& out = outBuffer(monitor, matte, in);
+            auto& out = outBuffer(monitor, matte, in, canvas);
+            const auto localVertices = [&] {
+                for (size_t i = 0; i + 3 < s_state->vertices.size(); i += 4) {
+                    s_state->vertices[i] -= canvas.x;
+                    s_state->vertices[i + 1] -= canvas.y;
+                }
+            };
             beginDraw(out, matte ? 1.f : 0.f);
             // the lift is the glass as it was drawn over the frame, alpha and all
             if (!matte && state->liftedIn == frame && state->lift.copy && state->lift.copy->getTexture()) {
-                fillVertices(cells, cells, *box, state->lift.box);
+                fillVertices(cells, cells, box, state->lift.box);
+                localVertices();
                 const SPane pane = paneOf(state->lift);
                 drawMesh(state->lift.copy->getTexture(), cells, cells, 1.f, &pane);
             }
-            fillVertices(cells, cells, *box, CBox{0, 0, in->m_size.x, in->m_size.y});
+            fillVertices(cells, cells, box, input.box);
+            localVertices();
             drawMesh(in->getTexture(), cells, cells, 1.f, nullptr);
-            endDraw(g_pHyprRenderer->m_renderData.currentFB);
-            return out;
+            endDraw(VetroRender::context().m_data.currentFB);
+            return {.framebuffer = out, .box = canvas, .success = true};
         }
 
       private:
         PHLWINDOWREF m_window;
+        bool m_active = true;
     };
 
     void attach(SWindow& state, const PHLWINDOW& window) {
         if (state.attached || !window)
             return;
-        window->m_transformers.emplace_back(makeUnique<CMotionTransformer>(state.window));
+        window->effects().transformers()->emplace<CMotionTransformer>(state.window);
         state.attached = true;
     }
 
@@ -540,7 +575,10 @@ namespace {
         if (!state.attached)
             return;
         if (const auto window = state.window.lock())
-            std::erase_if(window->m_transformers, [](const auto& transformer) { return dynamic_cast<CMotionTransformer*>(transformer.get()) != nullptr; });
+            if (auto* transformer = window->effects().transformers()->get<CMotionTransformer>()) {
+                transformer->deactivate();
+                window->effects().transformers()->removeInactive();
+            }
         state.attached = false;
         state.lift     = {};
         state.save.reset();
@@ -563,9 +601,10 @@ namespace {
 
         explicit CGenieElement(SData data) : m_data(std::move(data)) {}
 
-        std::vector<UP<IPassElement>> draw() override {
-            const auto monitor = g_pHyprRenderer->m_renderData.pMonitor.lock();
-            const auto target  = g_pHyprRenderer->m_renderData.currentFB;
+        std::vector<UP<IPassElement>> draw(Render::CRenderContext& ctx) override {
+            const VetroRender::Scope renderScope(ctx);
+            const auto monitor = VetroRender::context().m_data.pMonitor.lock();
+            const auto target  = VetroRender::context().m_data.currentFB;
             if (!s_state || !m_data.snapshot || !m_data.snapshot->getTexture() || !target || !normal(monitor) || !ready())
                 return {};
             auto& points = s_state->points;
@@ -597,22 +636,27 @@ namespace {
             return {};
         }
 
-        bool needsLiveBlur() override {
+        bool needsLiveBlur(Render::CRenderContext& ctx) override {
+            const VetroRender::Scope renderScope(ctx);
             return false;
         }
-        bool needsPrecomputeBlur() override {
+        bool needsPrecomputeBlur(Render::CRenderContext& ctx) override {
+            const VetroRender::Scope renderScope(ctx);
             return false;
         }
-        std::optional<CBox> boundingBox() override {
-            const auto monitor = g_pHyprRenderer->m_renderData.pMonitor.lock();
+        std::optional<CBox> boundingBox(Render::CRenderContext& ctx) override {
+            const VetroRender::Scope renderScope(ctx);
+            const auto monitor = VetroRender::context().m_data.pMonitor.lock();
             if (!monitor)
                 return std::nullopt;
             return CBox{0, 0, monitor->m_size.x, monitor->m_size.y};
         }
-        CRegion opaqueRegion() override {
+        CRegion opaqueRegion(Render::CRenderContext& ctx) override {
+            const VetroRender::Scope renderScope(ctx);
             return {};
         }
-        bool disableSimplification() override {
+        bool disableSimplification(Render::CRenderContext& ctx) override {
+            const VetroRender::Scope renderScope(ctx);
             return true;
         }
         const char* passName() override {
@@ -632,16 +676,17 @@ namespace {
       public:
         explicit CKeepElement(PHLWINDOWREF window) : m_window(std::move(window)) {}
 
-        std::vector<UP<IPassElement>> draw() override {
+        std::vector<UP<IPassElement>> draw(Render::CRenderContext& ctx) override {
+            const VetroRender::Scope renderScope(ctx);
             const auto  window  = m_window.lock();
-            const auto  monitor = g_pHyprRenderer->m_renderData.pMonitor.lock();
-            const auto& target  = g_pHyprRenderer->m_renderData.currentFB;
+            const auto  monitor = VetroRender::context().m_data.pMonitor.lock();
+            const auto& target  = VetroRender::context().m_data.currentFB;
             if (!s_state || !window || !normal(monitor) || !target || !fbId(target))
                 return {};
             const auto shape = liftShape(window, monitor, target);
             if (!shape)
                 return {};
-            const auto& damage = g_pHyprRenderer->m_renderData.damage;
+            const auto& damage = VetroRender::context().m_data.damage;
             auto&       kept   = s_state->kept;
             if (kept.copy && s_state->keptFor.lock() == window && kept.box == shape->first) {
                 // the copy takes what this frame drew of the window again, so
@@ -681,10 +726,12 @@ namespace {
             return {};
         }
 
-        bool needsLiveBlur() override {
+        bool needsLiveBlur(Render::CRenderContext& ctx) override {
+            const VetroRender::Scope renderScope(ctx);
             return false;
         }
-        bool needsPrecomputeBlur() override {
+        bool needsPrecomputeBlur(Render::CRenderContext& ctx) override {
+            const VetroRender::Scope renderScope(ctx);
             return false;
         }
         const char* passName() override {
@@ -737,7 +784,7 @@ namespace {
             const double progress = std::clamp(seconds(now - closing.startedAt) / length, 0.0, 1.0);
             const float  alpha    = closing.alpha * static_cast<float>(1.0 - smoothstep(0.85, 1.0, progress));
             ++s_state->counters.genies;
-            g_pHyprRenderer->m_renderPass.add(makeUnique<CGenieElement>(CGenieElement::SData{closing.snapshot, closing.source, closing.mouth, progress, alpha, closing.glass}));
+            VetroRender::context().m_pass.add(makeUnique<CGenieElement>(CGenieElement::SData{closing.snapshot, closing.source, closing.mouth, progress, alpha, closing.glass}));
         }
     }
 
@@ -815,7 +862,7 @@ namespace {
         if (!on(GLASS_T_WOBBLE_MOVES))
             return;
         for (const auto& window : Desktop::viewState()->windows()) {
-            if (window && window->m_isMapped && !window->isHidden() && window->m_monitor.lock() == monitor && animating(window))
+            if (window && window->mapped() && !window->isHidden() && window->m_monitor.lock() == monitor && animating(window))
                 track(window);
         }
     }
@@ -832,7 +879,7 @@ namespace {
             const auto window = state->window.lock();
             if (!window || window->m_monitor.lock() != monitor)
                 continue;
-            const bool runs = enabled() && normal(monitor) && window->m_isMapped && stepWindow(*state, window, monitor, dragged, now);
+            const bool runs = enabled() && normal(monitor) && window->mapped() && stepWindow(*state, window, monitor, dragged, now);
             busy            = busy || runs || state->attached;
             if (runs)
                 attach(*state, window);
@@ -898,8 +945,8 @@ namespace Motion {
         for (auto& state : s_state->windows)
             detach(*state);
         if (g_pHyprRenderer) {
-            g_pHyprRenderer->m_renderPass.removeAllOfType(GENIE_PASS);
-            g_pHyprRenderer->m_renderPass.removeAllOfType(KEEP_PASS);
+            VetroRender::context().m_pass.removeAllOfType(GENIE_PASS);
+            VetroRender::context().m_pass.removeAllOfType(KEEP_PASS);
         }
         setPace(1.0);
         if (s_state->programReady || s_state->programTried) {
@@ -952,10 +999,10 @@ namespace Motion {
         // render pass can keep from being drawn as well
         const auto monitor = window->m_monitor.lock();
         if (!enabled() || !on(GLASS_T_GENIE_CLOSE) || !g_pGlobalState->renderPassAddHook || !normal(monitor) || !window->m_workspace ||
-            !window->m_workspace->isVisible())
+            !window->m_workspace->visible())
             return;
         CBox source = window->getFullWindowBoundingBox();
-        source.translate(window->m_floatingOffset - monitor->m_position).scale(monitor->m_scale);
+        source.translate(window->presentation().floatingOffset() - monitor->m_position).scale(monitor->m_scale);
         if (source.w < 1.0 || source.h < 1.0)
             return;
         // poured without its glass it would be black where the glass was: a
@@ -964,8 +1011,8 @@ namespace Motion {
             return;
         ++s_state->counters.closes;
         // as Hyprland starts the window's fadeout: by the next frame that has run on
-        const float alpha = window->alphaValue(Desktop::View::WINDOW_ALPHA_FADE) * window->alphaValue(Desktop::View::WINDOW_ALPHA_FULLSCREEN) *
-            window->alphaValue(Desktop::View::WINDOW_ALPHA_LAYOUT);
+        const float alpha = window->presentation().alphaValue(Desktop::View::WINDOW_ALPHA_FADE) * window->presentation().alphaValue(Desktop::View::WINDOW_ALPHA_FULLSCREEN) *
+            window->presentation().alphaValue(Desktop::View::WINDOW_ALPHA_LAYOUT);
         s_state->closing.push_back({.monitor = monitor->m_id, .source = source, .mouth = mouthFor(monitor), .closedAt = Clock::now(), .alpha = std::clamp(alpha, 0.f, 1.f),
                                     .glass = std::move(glass)});
     }
@@ -981,10 +1028,17 @@ namespace Motion {
             g_pHyprRenderer->damageMonitor(monitor);
     }
 
+    void onRenderPost(PHLMONITOR monitor) {
+        // 0.57 consumes pre-render damage in the current frame. Request the
+        // next frame after submission so standalone springs keep advancing.
+        if (s_state && monitor && s_state->busy[monitor->m_id])
+            g_pHyprRenderer->damageMonitor(monitor);
+    }
+
     void onRenderStage(eRenderStage stage) {
         if (!s_state || !g_pGlobalState || stage != RENDER_POST_WINDOWS)
             return;
-        if (const auto monitor = g_pHyprRenderer->m_renderData.pMonitor.lock())
+        if (const auto monitor = VetroRender::context().m_data.pMonitor.lock())
             queueGenies(monitor);
     }
 
@@ -1021,22 +1075,22 @@ namespace Motion {
         out += std::format("  opens {}, closes {}, fadeouts {}, matched {}, genies queued {}, drawn {}, transforms {}, meshes {}, lifts {}\n", counters.opens, counters.closes,
                            counters.fadeouts, counters.matched, counters.genies, counters.genieDraws, counters.transforms, counters.meshes, counters.lifts);
         const auto dragged = draggedWindow();
-        out += std::format("  dragging {}, {} frames dragged in all\n", dragged ? dragged->m_class : std::string{"nothing"}, counters.dragged);
-        out += std::format("  window kept {} times, now {}\n", counters.keeps, s_state->kept.copy && !s_state->keptFor.expired() ? s_state->keptFor.lock()->m_class : std::string{"none"});
+        out += std::format("  dragging {}, {} frames dragged in all\n", dragged ? dragged->metadata().appID() : std::string{"nothing"}, counters.dragged);
+        out += std::format("  window kept {} times, now {}\n", counters.keeps, s_state->kept.copy && !s_state->keptFor.expired() ? s_state->keptFor.lock()->metadata().appID() : std::string{"none"});
         if (!s_state->lastGenie.empty())
             out += "  last genie: " + s_state->lastGenie + "\n";
         out += std::format("  windows {}, closing {}, springs at pace {}, animations {}\n", s_state->windows.size(), s_state->closing.size(), s_state->springs.size(),
                            s_state->paces.size());
         for (const auto& state : s_state->windows) {
             const auto window = state->window.lock();
-            out += std::format("    {} {}{}{}{}\n", window ? window->m_class : std::string{"(gone)"}, state->attached ? "bent" : "flat",
+            out += std::format("    {} {}{}{}{}\n", window ? window->metadata().appID() : std::string{"(gone)"}, state->attached ? "bent" : "flat",
                                state->open == EOpen::Genie ? ", genie" : state->open == EOpen::Jelly ? ", jelly" : "", state->moving ? ", moving" : "", state->held ? ", held" : "");
         }
         return out;
     }
 
     UP<IPassElement> keeper(IPassElement& surface) {
-        if (!s_state || surface.type() != EK_SURFACE || g_pHyprRenderer->m_bRenderingSnapshot || RenderGuards::isForeignRender())
+        if (!s_state || surface.type() != EK_SURFACE || VetroRender::context().m_renderingSnapshot || RenderGuards::isForeignRender())
             return nullptr;
         const auto& data = static_cast<CSurfacePassElement&>(surface).m_data;
         if (!data.mainSurface || data.popup || !data.pWindow || !keeps(data.pWindow))
@@ -1060,8 +1114,8 @@ namespace Motion {
     }
 
     CLift::CLift(const PHLWINDOW& window, const PHLMONITOR& monitor) : m_window(window) {
-        const auto& target = g_pHyprRenderer->m_renderData.currentFB;
-        if (!s_state || !window || !normal(monitor) || !target || !fbId(target) || g_pHyprRenderer->m_bRenderingSnapshot)
+        const auto& target = VetroRender::context().m_data.currentFB;
+        if (!s_state || !window || !normal(monitor) || !target || !fbId(target) || VetroRender::context().m_renderingSnapshot)
             return;
         auto* state = find(window);
         if (!state || !state->attached)
@@ -1085,8 +1139,8 @@ namespace Motion {
         if (!m_active || !s_state)
             return;
         const auto  window  = m_window.lock();
-        const auto& target  = g_pHyprRenderer->m_renderData.currentFB;
-        const auto  monitor = g_pHyprRenderer->m_renderData.pMonitor.lock();
+        const auto& target  = VetroRender::context().m_data.currentFB;
+        const auto  monitor = VetroRender::context().m_data.pMonitor.lock();
         if (!window || !target || !monitor)
             return;
 

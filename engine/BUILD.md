@@ -48,3 +48,10 @@ the old file loaded, and keeps it until the next login. The engine is loaded by
 The engine's own tests (the lens model, option parsing, the shaders; they compile,
 and need no display) run with `make -C engine test`, or
 `VETRO_TEST_ENGINE=1 scripts/check-repo`.
+
+The 0.57.1 engine uses Hyprland's explicit render contexts, window presentation
+and transformer APIs. It has been built with hyprutils 0.14.3 and Aquamarine
+0.16.0, then loaded in an isolated 0.57.1 compositor carrying Omarchy's four
+patches. Window and layer glass, opening jelly, closing genie, cropped
+transform buffers, configuration reload and plugin unload were exercised.
+The 0.56.2 pin continues to select its previous engine commit.

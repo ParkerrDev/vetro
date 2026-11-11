@@ -1,3 +1,4 @@
+#include "RenderContext.hpp"
 #include "GlassDecoration.hpp"
 #include "BackgroundDamageObserver.hpp"
 #include "Diagnostics.hpp"
@@ -13,7 +14,7 @@
 
 #include <algorithm>
 #include <GLES3/gl32.h>
-#include <hyprland/src/desktop/view/Window.hpp>
+#include <hyprland/src/desktop/view/window/Window.hpp>
 #include <hyprland/src/desktop/rule/windowRule/WindowRuleApplicator.hpp>
 #include <hyprland/src/desktop/state/FocusState.hpp>
 #include <hyprland/src/managers/fullscreen/FullscreenController.hpp>
@@ -114,7 +115,7 @@ CGlassDecoration::EEnabledResolution CGlassDecoration::resolveEnabled() const {
         // Nothing behind an opaque window is visible, unless the window
         // self-samples: then the glass shows the window's own content, which
         // does change, so the opaque-skip must yield to it.
-        if (skipOpaque && window && window->opaque()) {
+        if (skipOpaque && window && window->presentation().opaque()) {
             const bool         isDark = resolveThemeIsDark();
             const std::string  preset = resolvePresetName();
             const SResolveContext ctx = {preset, isDark, config, g_pGlobalState->customPresets};
@@ -204,8 +205,8 @@ void CGlassDecoration::queueGlassPass(float alpha, bool xray, std::vector<Beneat
 
     // Only the real monitor pass is de-duplicated: snapshots, screencopy and
     // overview framebuffers render the window once, out of frame order.
-    const bool managed = g_pGlobalState->frameSerial != 0 && !g_pHyprRenderer->m_bRenderingSnapshot &&
-        g_pHyprRenderer->m_renderData.projectionType == Render::RPT_MONITOR;
+    const bool managed = g_pGlobalState->frameSerial != 0 && !VetroRender::context().m_renderingSnapshot &&
+        VetroRender::context().m_data.projectionType == Render::RPT_MONITOR;
 
     if (managed) {
         if (m_glassFrameSerial != g_pGlobalState->frameSerial) {
@@ -221,10 +222,11 @@ void CGlassDecoration::queueGlassPass(float alpha, bool xray, std::vector<Beneat
     // m_renderPass, never addPassElement: draw() runs inside Hyprland's own
     // per-window redirect for transformed windows (motion blur), whose pass
     // renders into a work buffer cleared to transparent — nothing to sample.
-    g_pHyprRenderer->m_renderPass.add(makeUnique<CGlassPassElement>(data));
+    VetroRender::context().m_pass.add(makeUnique<CGlassPassElement>(data));
 }
 
-void CGlassDecoration::draw(PHLMONITOR monitor, float const& alpha) {
+void CGlassDecoration::draw(Render::CRenderContext& ctx, PHLMONITOR monitor, float const& alpha, const Render::SWindowRenderPresentation& presentation) {
+    const VetroRender::Scope renderScope(ctx);
     if (!g_pGlobalState)
         return;
 
@@ -240,7 +242,7 @@ void CGlassDecoration::draw(PHLMONITOR monitor, float const& alpha) {
         if (const auto window = m_window.lock()) {
             const auto workspace = window->m_workspace;
             const Vector2D workspaceRenderOffset =
-                (workspace && !window->m_pinned) ? workspace->m_renderOffset->value() : Vector2D();
+                (workspace && !(window->m_state & Desktop::View::WINDOW_STATE_PINNED)) ? workspace->m_renderOffset->value() : Vector2D();
             const auto fullscreenMode = Fullscreen::controller()->getFullscreenModes(window).internal;
 
             auto& fingerprint = g_pGlobalState->renderFingerprints[monitor->m_id];
@@ -278,7 +280,7 @@ void CGlassDecoration::draw(PHLMONITOR monitor, float const& alpha) {
     // snapshot (the picture of a closing window that its fadeout shows): it is
     // drawn into a cleared framebuffer, so its glass would be black, and the
     // fadeout would show the window black wherever it lets the glass through.
-    if (RenderGuards::isForeignRender() || g_pHyprRenderer->m_bRenderingSnapshot)
+    if (RenderGuards::isForeignRender() || VetroRender::context().m_renderingSnapshot)
         return;
 
     const bool xray = resolveXray();
@@ -295,7 +297,7 @@ void CGlassDecoration::draw(PHLMONITOR monitor, float const& alpha) {
     // Hyprland's per-tick window damage carries none of our sampling padding.
     // Damage only: no cache state may be touched from a render.
     const auto window = m_window.lock();
-    if (window && !window->m_pinned) {
+    if (window && !(window->m_state & Desktop::View::WINDOW_STATE_PINNED)) {
         const auto workspace = window->m_workspace;
         if (workspace && workspace->m_renderOffset->isBeingAnimated())
             damageEntire();
@@ -338,7 +340,7 @@ bool CGlassDecoration::wantsBackgroundResample(PHLMONITOR monitor, const CBox& t
     }
 
     const auto& config = g_pGlobalState->config;
-    const auto  source = g_pHyprRenderer->m_renderData.currentFB;
+    const auto  source = VetroRender::context().m_data.currentFB;
     if (!m_sampleFramebuffer || !source)
         return true;
 
@@ -422,7 +424,7 @@ void CGlassDecoration::renderPass(PHLMONITOR monitor, const float& alpha, bool x
     if (!window)
         return;
 
-    const auto source = g_pHyprRenderer->m_renderData.currentFB;
+    const auto source = VetroRender::context().m_data.currentFB;
     if (!source)
         return;
 
@@ -450,8 +452,8 @@ void CGlassDecoration::renderPass(PHLMONITOR monitor, const float& alpha, bool x
     // Hyprland renders internal-fullscreen windows unrounded (dontRound), we need to
     // match, or the glass would show rounded gaps at the screen corners
     const bool fsUnrounded = Fullscreen::controller()->getFullscreenModes(window).internal == Fullscreen::FSMODE_FULLSCREEN;
-    float cornerRadius  = fsUnrounded ? 0.0f : window->rounding() * monitorScale;
-    float roundingPower = window->roundingPower();
+    float cornerRadius  = fsUnrounded ? 0.0f : window->presentation().rounding() * monitorScale;
+    float roundingPower = window->presentation().roundingPower();
 
     // The pane reaches beyond the window by its border (windows:border), and a
     // band round a rounded window is rounded by that much more, as Hyprland's
@@ -485,8 +487,8 @@ void CGlassDecoration::renderPass(PHLMONITOR monitor, const float& alpha, bool x
     // not the active/inactive dimming or opacity rules: those make the surface
     // more translucent — revealing more glass — and shouldn't wash out the
     // glass pane itself. Rebuild the fade-only alpha from its components.
-    float glassAlpha = window->alphaTotalWithout(Desktop::View::WINDOW_ALPHA_ACTIVE);
-    if (const auto workspace = window->m_workspace; workspace && !window->m_pinned)
+    float glassAlpha = window->alpha().getTotalWithout(Desktop::View::WINDOW_ALPHA_ACTIVE);
+    if (const auto workspace = window->m_workspace; workspace && !(window->m_state & Desktop::View::WINDOW_STATE_PINNED))
         glassAlpha *= workspace->m_alpha->value();
 
     const MONITORID monitorId = monitor ? monitor->m_id : -1; // -1 mirrors Hyprland's own MONITOR_INVALID
@@ -511,7 +513,7 @@ void CGlassDecoration::renderPass(PHLMONITOR monitor, const float& alpha, bool x
         // X-ray never samples the live frame: it holds the windows it hides.
         const auto snapshot = xray ? Backdrop::get(monitor, source) : nullptr;
         const bool covered  = xray ? static_cast<bool>(snapshot) :
-                                     GlassRenderer::sampleRegionCovered(transformBox, source, g_pHyprRenderer->m_renderData.damage, monitor);
+                                     GlassRenderer::sampleRegionCovered(transformBox, source, VetroRender::context().m_data.damage, monitor);
 
         if (covered) {
             float blurStrength   = ctx.f(GLASS_F_BLUR_STRENGTH);
@@ -600,8 +602,8 @@ CRegion CGlassDecoration::opaqueRegion(PHLMONITOR monitor, bool xray, bool windo
         (resolved != EEnabledResolution::Enabled && !solid))
         return {};
 
-    float alpha = solid ? window->alphaTotal() : window->alphaTotalWithout(Desktop::View::WINDOW_ALPHA_ACTIVE);
-    if (const auto workspace = window->m_workspace; workspace && !window->m_pinned)
+    float alpha = solid ? window->alpha().getTotal() : window->alpha().getTotalWithout(Desktop::View::WINDOW_ALPHA_ACTIVE);
+    if (const auto workspace = window->m_workspace; workspace && !(window->m_state & Desktop::View::WINDOW_STATE_PINNED))
         alpha *= workspace->m_alpha->value();
     if (alpha < 1.0f)
         return {};
@@ -620,8 +622,8 @@ CRegion CGlassDecoration::opaqueRegion(PHLMONITOR monitor, bool xray, bool windo
     box->scale(1.0 / monitor->m_scale).expand(-1.0 - frame);
 
     const bool   fsUnrounded = Fullscreen::controller()->getFullscreenModes(window).internal == Fullscreen::FSMODE_FULLSCREEN;
-    const double radius      = fsUnrounded || window->rounding() <= 0.0f ? 0.0 :
-                                                                          std::ceil(window->rounding() + WindowGeometry::glassBorder(window) - frame);
+    const double radius      = fsUnrounded || window->presentation().rounding() <= 0.0f ? 0.0 :
+                                                                          std::ceil(window->presentation().rounding() + WindowGeometry::glassBorder(window) - frame);
     if (box->w <= 2.0 * radius || box->h <= 2.0 * radius)
         return {};
 
@@ -686,7 +688,7 @@ void CGlassDecoration::renderQuartz(PHLMONITOR monitor, const SP<Render::IFrameb
     if (!stale) {
         Diagnostics::recordWindowCacheHit(monitorId);
     } else {
-        const bool covered = GlassRenderer::sampleRegionCovered(copyRect, source, g_pHyprRenderer->m_renderData.damage, monitor);
+        const bool covered = GlassRenderer::sampleRegionCovered(copyRect, source, VetroRender::context().m_data.damage, monitor);
         if (covered && Meniscus::copyWithMips(m_quartzPage, source, copyRect, source)) {
             m_quartzRect            = copyRect;
             m_quartzClean           = false;
@@ -757,7 +759,7 @@ void CGlassDecoration::renderQuartzClean(PHLMONITOR monitor, const SP<Render::IF
         sceneChangedSinceSample(monitor, true);
     if (!stale) {
         Diagnostics::recordWindowCacheHit(monitorId);
-    } else if (CRegion(copyRect).subtract(g_pHyprRenderer->m_renderData.damage).empty() &&
+    } else if (CRegion(copyRect).subtract(VetroRender::context().m_data.damage).empty() &&
                Meniscus::copyClean(m_quartzPage, Meniscus::SCleanSource{source, backdrop, under}, copyRect, source)) {
         if (!(blur >= 1.0f) || !Backdrop::blurInto(m_quartzPage, m_quartzBlur, blur, source))
             m_quartzBlur.reset();
@@ -809,7 +811,7 @@ void CGlassDecoration::updateWindow(PHLWINDOW) {
     // A plugin may replay this mid-render under substituted geometry. mainFB is
     // set exactly between begin() and end(); currentFB also follows binds taken
     // outside a pass. Above the m_last* store, so the next real update bumps.
-    if (g_pHyprRenderer->m_renderData.mainFB)
+    if (VetroRender::context().m_data.mainFB)
         return;
 
     damageEntire();
@@ -839,8 +841,8 @@ void CGlassDecoration::updateWindow(PHLWINDOW) {
     // layer; switching to it bumps on its own. Same predicate Hyprland renders
     // by: a slide or fade keeps drawing an already-invisible workspace.
     const auto workspace = ownWindow->m_workspace;
-    if (workspace && !workspace->m_visible && !workspace->m_forceRendering && !workspace->m_renderOffset->isBeingAnimated() &&
-        !workspace->m_alpha->isBeingAnimated() && !ownWindow->m_pinned)
+    if (workspace && !workspace->visible() && !workspace->m_forceRendering && !workspace->m_renderOffset->isBeingAnimated() &&
+        !workspace->m_alpha->isBeingAnimated() && !(ownWindow->m_state & Desktop::View::WINDOW_STATE_PINNED))
         return;
 
     g_pGlobalState->bumpSceneGeneration(monitor);

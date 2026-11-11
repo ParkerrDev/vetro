@@ -1,3 +1,4 @@
+#include "RenderContext.hpp"
 #include "GlassPassElement.hpp"
 #include "Diagnostics.hpp"
 #include "GlassDecoration.hpp"
@@ -12,7 +13,8 @@
 CGlassPassElement::CGlassPassElement(const SGlassPassData& data)
     : m_data(data) {}
 
-std::vector<UP<IPassElement>> CGlassPassElement::draw() {
+std::vector<UP<IPassElement>> CGlassPassElement::draw(Render::CRenderContext& ctx) {
+    const VetroRender::Scope renderScope(ctx);
     // debug:mode = hints_only: keep every hint below (damage, live blur,
     // simplification bypass) but do none of the GL work, to isolate the
     // render pass's own cost from the glass pipeline's.
@@ -28,7 +30,7 @@ std::vector<UP<IPassElement>> CGlassPassElement::draw() {
     if (!m_data.decoration->isCurrentGlassPass(m_data.frameSerial, m_data.queueIndex))
         return {};
 
-    const auto monitor = g_pHyprRenderer->m_renderData.pMonitor.lock();
+    const auto monitor = VetroRender::context().m_data.pMonitor.lock();
     // a window being bent takes its glass along: drawn here, lifted off the frame
     const Motion::CLift lift(m_data.decoration->getOwner(), monitor);
     m_data.decoration->renderPass(monitor, m_data.alpha, m_data.xray, m_data.under);
@@ -44,7 +46,7 @@ std::optional<CBox> CGlassPassElement::paddedLogicalBox() const {
     if (!window)
         return std::nullopt;
 
-    const auto monitor = g_pHyprRenderer->m_renderData.pMonitor.lock();
+    const auto monitor = VetroRender::context().m_data.pMonitor.lock();
     auto box = WindowGeometry::computeWindowBox(window, monitor);
     if (!box)
         return std::nullopt;
@@ -60,18 +62,21 @@ std::optional<CBox> CGlassPassElement::paddedLogicalBox() const {
     return box;
 }
 
-std::optional<CBox> CGlassPassElement::boundingBox() {
+std::optional<CBox> CGlassPassElement::boundingBox(Render::CRenderContext& ctx) {
+    const VetroRender::Scope renderScope(ctx);
     return paddedLogicalBox();
 }
 
-CRegion CGlassPassElement::opaqueRegion() {
+CRegion CGlassPassElement::opaqueRegion(Render::CRenderContext& ctx) {
+    const VetroRender::Scope renderScope(ctx);
     // debug:mode keeps the render pass as it was without the glass's own work
     if (currentDebugMode() != EDebugMode::OFF || !m_data.decoration.valid() || Motion::bends(m_data.decoration->getOwner()))
         return {};
-    return m_data.decoration->opaqueRegion(g_pHyprRenderer->m_renderData.pMonitor.lock(), m_data.xray, !m_data.under.empty());
+    return m_data.decoration->opaqueRegion(VetroRender::context().m_data.pMonitor.lock(), m_data.xray, !m_data.under.empty());
 }
 
-bool CGlassPassElement::needsLiveBlur() {
+bool CGlassPassElement::needsLiveBlur(Render::CRenderContext& ctx) {
+    const VetroRender::Scope renderScope(ctx);
     // debug:mode = gl_work_only: run the GL pipeline but withhold these
     // hints, isolating their render-pass cost (full re-render) from the
     // pipeline's own GL cost.
@@ -87,7 +92,7 @@ bool CGlassPassElement::needsLiveBlur() {
     if (!paddedLogicalBox().has_value())
         return false;
 
-    const auto monitor = g_pHyprRenderer->m_renderData.pMonitor.lock();
+    const auto monitor = VetroRender::context().m_data.pMonitor.lock();
     const auto window   = m_data.decoration->getOwner();
     if (!monitor || !window)
         return false;
@@ -109,11 +114,13 @@ bool CGlassPassElement::needsLiveBlur() {
     return !(m_data.xray && m_data.under.empty() && Backdrop::possible(monitor));
 }
 
-bool CGlassPassElement::needsPrecomputeBlur() {
+bool CGlassPassElement::needsPrecomputeBlur(Render::CRenderContext& ctx) {
+    const VetroRender::Scope renderScope(ctx);
     return false;
 }
 
-bool CGlassPassElement::disableSimplification() {
+bool CGlassPassElement::disableSimplification(Render::CRenderContext& ctx) {
+    const VetroRender::Scope renderScope(ctx);
     // Left enabled, including under debug:mode = gl_work_only: an element
     // whose padded box misses the render pass's damage is safely discarded.
     // One that survives discard still draws its whole box, so needsLiveBlur
@@ -121,14 +128,15 @@ bool CGlassPassElement::disableSimplification() {
     return false;
 }
 
-void CGlassPassElement::discard() {
+void CGlassPassElement::discard(Render::CRenderContext& ctx) {
+    const VetroRender::Scope renderScope(ctx);
     // CRenderPass::render() calls this in place of draw() for an element
     // simplify() dropped — renderPass() never runs for it, so it's otherwise
     // invisible to every other counter this file records. The only way
     // `hyprctl hyprglass stats` can show how many glass windows exist versus
     // how many are actually being kept current.
-    if (const auto monitor = g_pHyprRenderer->m_renderData.pMonitor.lock())
+    if (const auto monitor = VetroRender::context().m_data.pMonitor.lock())
         Diagnostics::recordWindowPassDiscarded(monitor->m_id);
 
-    IPassElement::discard();
+    IPassElement::discard(VetroRender::context());
 }

@@ -1,3 +1,4 @@
+#include "RenderContext.hpp"
 #include "GlassLayerSurface.hpp"
 #include "Diagnostics.hpp"
 #include "GlassRenderer.hpp"
@@ -219,7 +220,7 @@ void CGlassLayerSurface::damageIfMoved() {
     const bool isAnimating = layerSurface->positionAnimation()->isBeingAnimated() ||
                              layerSurface->sizeAnimation()->isBeingAnimated() ||
                              layerSurface->alpha()[Desktop::View::LS_ALPHA_FADE]->isBeingAnimated() ||
-                             !layerSurface->m_mapped;
+                             !layerSurface->mapped();
 
     const bool moved = currentPosition != m_lastPosition || currentSize != m_lastSize;
 
@@ -287,7 +288,7 @@ void CGlassLayerSurface::sampleAndRedirect(PHLMONITOR monitor, float alpha, bool
     if (!layerSurface)
         return;
 
-    auto source = g_pHyprRenderer->m_renderData.currentFB;
+    auto source = VetroRender::context().m_data.currentFB;
     if (!source)
         return;
 
@@ -345,9 +346,9 @@ void CGlassLayerSurface::sampleAndRedirect(PHLMONITOR monitor, float alpha, bool
     const auto snapshot      = (xray && backgroundChanged) ? Backdrop::get(monitor, source) : nullptr;
     const bool sampleCovered = !backgroundChanged ||
                                (xray ? static_cast<bool>(snapshot) :
-                                       GlassRenderer::sampleRegionCovered(sampleBox, source, g_pHyprRenderer->m_renderData.damage, monitor));
+                                       GlassRenderer::sampleRegionCovered(sampleBox, source, VetroRender::context().m_data.damage, monitor));
 
-    if (!layerSurface->m_mapped) {
+    if (!layerSurface->mapped()) {
         // During fade-out, re-sampling captures stale pixels. Reuse cached sample.
         if (!m_hasCachedSample)
             return;
@@ -417,7 +418,7 @@ void CGlassLayerSurface::sampleAndRedirect(PHLMONITOR monitor, float alpha, bool
 
     m_savedCurrentFB = source;
 
-    g_pHyprRenderer->m_renderData.currentFB = m_surfaceTempFramebuffer;
+    VetroRender::context().m_data.currentFB = m_surfaceTempFramebuffer;
     glBindFramebuffer(GL_FRAMEBUFFER, dynamic_cast<Render::GL::CGLFramebuffer*>(m_surfaceTempFramebuffer.get())->getFBID());
 
     // Unpadded: the composite quad only ever reads transformBox (rawBox, never
@@ -429,10 +430,10 @@ void CGlassLayerSurface::sampleAndRedirect(PHLMONITOR monitor, float alpha, bool
 
     if (std::isfinite(clearBox.x) && std::isfinite(clearBox.y) && std::isfinite(clearBox.w) && std::isfinite(clearBox.h) &&
         clearBox.w > 0.0 && clearBox.h > 0.0) {
-        g_pHyprOpenGL->scissor(clearBox, false);
+        g_pHyprOpenGL->scissor(VetroRender::context(), clearBox, false);
         glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
         glClear(GL_COLOR_BUFFER_BIT);
-        g_pHyprOpenGL->scissor(nullptr);
+        g_pHyprOpenGL->scissor(VetroRender::context(), nullptr);
     }
 
     m_redirectedThisFrame = true;
@@ -441,7 +442,7 @@ void CGlassLayerSurface::sampleAndRedirect(PHLMONITOR monitor, float alpha, bool
 void CGlassLayerSurface::compositeAndRestore(PHLMONITOR monitor, float alpha, EMaskSource maskSource) {
     // Restore the original currentFB before compositing
     if (m_savedCurrentFB) {
-        g_pHyprRenderer->m_renderData.currentFB = m_savedCurrentFB;
+        VetroRender::context().m_data.currentFB = m_savedCurrentFB;
         glBindFramebuffer(GL_FRAMEBUFFER, dynamic_cast<Render::GL::CGLFramebuffer*>(m_savedCurrentFB.get())->getFBID());
         m_savedCurrentFB.reset();
     }
@@ -463,7 +464,7 @@ void CGlassLayerSurface::compositeAndRestore(PHLMONITOR monitor, float alpha, EM
     if (!layerSurface)
         return;
 
-    auto target = g_pHyprRenderer->m_renderData.currentFB;
+    auto target = VetroRender::context().m_data.currentFB;
     if (!target)
         return;
 

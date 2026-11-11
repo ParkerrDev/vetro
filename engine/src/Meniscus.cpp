@@ -1,3 +1,4 @@
+#include "RenderContext.hpp"
 #include "Meniscus.hpp"
 #include "Backdrop.hpp"
 #include "Diagnostics.hpp"
@@ -316,7 +317,7 @@ bool makeCloud(const SP<Render::IFramebuffer>& page, SP<Render::IFramebuffer>& c
         auto& other   = weighted ? scratch.cloud : scratch.blur;
         ensureAtLeast(other, weighted ? "hyprglass-cloud-blur" : "hyprglass-frost-blur", width, height, format);
         frostBlurPasses(programs.frostBlur, cloud, other, width, height, plan, weighted ? 2 : 0);
-        if (const auto monitor = g_pHyprRenderer->m_renderData.pMonitor.lock())
+        if (const auto monitor = VetroRender::context().m_data.pMonitor.lock())
             Diagnostics::recordBlurPasses(monitor->m_id, static_cast<uint64_t>(plan.passes) * 2);
     }
     endOffscreen(caller);
@@ -1317,7 +1318,7 @@ void CLayer::sample(SPane& pane, const SP<Render::IFramebuffer>& source, const V
     const int  height    = fullH / reduction;
     const auto format    = weighted ? DRM_FORMAT_ARGB8888 : source->m_drmFormat;
 
-    if (const auto monitor = g_pHyprRenderer->m_renderData.pMonitor.lock())
+    if (const auto monitor = VetroRender::context().m_data.pMonitor.lock())
         Diagnostics::recordSampledPixels(monitor->m_id, static_cast<double>(fullW) * static_cast<double>(fullH));
 
     ensureExact(pane.frost, "hyprglass-frost", width, height, format);
@@ -1366,7 +1367,7 @@ void CLayer::sample(SPane& pane, const SP<Render::IFramebuffer>& source, const V
         // what the last pass does besides: the face, or the division a weighted copy is owed
         frostBlurPasses(program, pane.frost, other, width, height, plan, weighted ? 2 : layered ? 0 : 1);
 
-        if (const auto monitor = g_pHyprRenderer->m_renderData.pMonitor.lock())
+        if (const auto monitor = VetroRender::context().m_data.pMonitor.lock())
             Diagnostics::recordBlurPasses(monitor->m_id, static_cast<uint64_t>(passes) * 2);
     }
 
@@ -1435,7 +1436,7 @@ void CLayer::setPaneUniforms(CProgram& program, const SPane& pane, const CBox& l
 }
 
 void CLayer::drawShadows(const SP<Render::IFramebuffer>& target, const CBox& layerBox, float alpha) {
-    const auto monitor = g_pHyprRenderer->m_renderData.pMonitor.lock();
+    const auto monitor = VetroRender::context().m_data.pMonitor.lock();
     if (!monitor || !m_shadow)
         return;
 
@@ -1454,7 +1455,7 @@ void CLayer::drawShadows(const SP<Render::IFramebuffer>& target, const CBox& lay
         for (const auto& interior : pane.interiors)
             region.subtract(interior.copy().translate(layerBox.pos()));
     }
-    region.intersect(bounds).intersect(g_pHyprRenderer->m_renderData.damage);
+    region.intersect(bounds).intersect(VetroRender::context().m_data.damage);
     if (region.empty())
         return;
 
@@ -1470,7 +1471,7 @@ void CLayer::drawShadows(const SP<Render::IFramebuffer>& target, const CBox& lay
     glUniform1f(program.uniform("shadowOpacity"), opacities.shadow);
 
     for (const auto& quad : quadsOf(region)) {
-        Mat3x3 matrix = g_pHyprRenderer->projectBoxToTarget(quad, transform);
+        Mat3x3 matrix = g_pHyprRenderer->projectBoxToTarget(VetroRender::context(), quad, transform);
         matrix.transpose();
         shader->setUniformMatrix3fv(SHADER_PROJ, 1, GL_FALSE, matrix.getMatrix());
         glUniform2f(program.uniform("quadOrigin"), static_cast<float>(quad.x - layerBox.x), static_cast<float>(quad.y - layerBox.y));
@@ -1484,7 +1485,7 @@ void CLayer::draw(const SP<Render::IFramebuffer>& target, const CBox& layerBox, 
     if (!target || !m_fieldValid || !mask.texture)
         return;
 
-    const auto monitor = g_pHyprRenderer->m_renderData.pMonitor.lock();
+    const auto monitor = VetroRender::context().m_data.pMonitor.lock();
     if (!monitor)
         return;
 
@@ -1501,12 +1502,12 @@ void CLayer::draw(const SP<Render::IFramebuffer>& target, const CBox& layerBox, 
     // thresholds, whether red and blue bend apart, and the direction of the light
     GlassDrawConstants constants{};
     (void)glass_draw_constants(&m_params, m_deviationScale, &constants);
-    const auto& damage    = g_pHyprRenderer->m_renderData.damage;
+    const auto& damage    = VetroRender::context().m_data.damage;
 
     glBindFramebuffer(GL_FRAMEBUFFER, fbId(target));
     g_pHyprRenderer->blend(true);
     // every quad below is cut to the damage by its own rectangle
-    g_pHyprOpenGL->scissor(nullptr);
+    g_pHyprOpenGL->scissor(VetroRender::context(), nullptr);
 
     // Apple's own shader draws the whole pane, shadow included, in one pass.
     if (m_params.quartz != 0) {
@@ -1548,7 +1549,7 @@ void CLayer::draw(const SP<Render::IFramebuffer>& target, const CBox& layerBox, 
             glUniform2f(program.uniform("frostOrigin"), static_cast<float>(pane.sampled.x - layerBox.x), static_cast<float>(pane.sampled.y - layerBox.y));
             glUniform2f(program.uniform("invFrostSize"), 1.0f / static_cast<float>(pane.sampled.w), 1.0f / static_cast<float>(pane.sampled.h));
             for (const auto& quad : quadsOf(region)) {
-                Mat3x3 matrix = g_pHyprRenderer->projectBoxToTarget(quad, transform);
+                Mat3x3 matrix = g_pHyprRenderer->projectBoxToTarget(VetroRender::context(), quad, transform);
                 matrix.transpose();
                 shader->setUniformMatrix3fv(SHADER_PROJ, 1, GL_FALSE, matrix.getMatrix());
                 glUniform2f(program.uniform("quadOrigin"), static_cast<float>(quad.x - layerBox.x), static_cast<float>(quad.y - layerBox.y));
@@ -1641,7 +1642,7 @@ void CLayer::draw(const SP<Render::IFramebuffer>& target, const CBox& layerBox, 
         glUniform1i(program.uniform("faceApplied"), pane.faceApplied ? 1 : 0);
 
         for (const auto& quad : quadsOf(region)) {
-            Mat3x3 matrix = g_pHyprRenderer->projectBoxToTarget(quad, transform);
+            Mat3x3 matrix = g_pHyprRenderer->projectBoxToTarget(VetroRender::context(), quad, transform);
             matrix.transpose();
             shader->setUniformMatrix3fv(SHADER_PROJ, 1, GL_FALSE, matrix.getMatrix());
             glUniform2f(program.uniform("quadOrigin"), static_cast<float>(quad.x - layerBox.x), static_cast<float>(quad.y - layerBox.y));
@@ -1858,7 +1859,7 @@ static void unbindQuartz() {
 // curves in there.
 void drawQuartzWindow(const SP<Render::IFramebuffer>& target, const SQuartzWindow& pane) {
     auto&      programs = g_pGlobalState->meniscusPrograms;
-    const auto monitor  = g_pHyprRenderer->m_renderData.pMonitor.lock();
+    const auto monitor  = VetroRender::context().m_data.pMonitor.lock();
     programs.initializeIfNeeded();
     if (!target || !pane.page || !monitor || !programs.ready() || !programs.quartzBlock)
         return;
@@ -1881,7 +1882,7 @@ void drawQuartzWindow(const SP<Render::IFramebuffer>& target, const SQuartzWindo
                 region.subtract(middle);
         }
     }
-    region.intersect(g_pHyprRenderer->m_renderData.damage);
+    region.intersect(VetroRender::context().m_data.damage);
     if (region.empty())
         return;
 
@@ -1893,7 +1894,7 @@ void drawQuartzWindow(const SP<Render::IFramebuffer>& target, const SQuartzWindo
     g_pHyprRenderer->blend(true);
     bindQuartzBlock(pane.quartz);
 
-    Mat3x3 matrix = g_pHyprRenderer->projectBoxToTarget(rawQuad, transform);
+    Mat3x3 matrix = g_pHyprRenderer->projectBoxToTarget(VetroRender::context(), rawQuad, transform);
     matrix.transpose();
     shader->setUniformMatrix3fv(SHADER_PROJ, 1, GL_FALSE, matrix.getMatrix());
 
@@ -1917,10 +1918,10 @@ void drawQuartzWindow(const SP<Render::IFramebuffer>& target, const SQuartzWindo
 
     Diagnostics::recordGlassPixels(monitor->m_id, rawQuad.w * rawQuad.h);
     for (const auto& part : quadsOf(region)) {
-        g_pHyprOpenGL->scissor(part);
+        g_pHyprOpenGL->scissor(VetroRender::context(), part);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
     }
-    g_pHyprOpenGL->scissor(nullptr);
+    g_pHyprOpenGL->scissor(VetroRender::context(), nullptr);
     unbindQuartz();
 }
 
@@ -1928,7 +1929,7 @@ void drawQuartzWindow(const SP<Render::IFramebuffer>& target, const SQuartzWindo
 // around it, the furthest any of its stages displaces or blurs, in points as
 // every length of the shader is.
 CBox CLayer::quartzRect(const SPane& pane, const Vector2D& boxPosition, const Vector2D& sourceSize) const {
-    const auto   monitor = g_pHyprRenderer->m_renderData.pMonitor.lock();
+    const auto   monitor = VetroRender::context().m_data.pMonitor.lock();
     const double scale   = monitor && monitor->m_scale > 0.0f ? monitor->m_scale : 1.0;
     const double margin = std::ceil(m_quartz.reach * scale) + 2.0;
     const CBox   wanted = pane.box.copy().translate(boxPosition).expand(margin).intersection(CBox{{}, sourceSize});
@@ -1951,7 +1952,7 @@ void CLayer::sampleQuartz(SPane& pane, const SP<Render::IFramebuffer>& source, c
         pane.page.reset();
     pane.blurred.reset();
     if (fromBackdrop) {
-        const auto monitor = g_pHyprRenderer->m_renderData.pMonitor.lock();
+        const auto monitor = VetroRender::context().m_data.pMonitor.lock();
         const float scale  = monitor && monitor->m_scale > 0.0f ? monitor->m_scale : 1.0f;
         pane.page     = source;
         pane.pageRect = CBox{{}, source->m_size};
@@ -1977,7 +1978,7 @@ void CLayer::sampleQuartz(SPane& pane, const SP<Render::IFramebuffer>& source, c
         return;
     }
 
-    if (const auto monitor = g_pHyprRenderer->m_renderData.pMonitor.lock())
+    if (const auto monitor = VetroRender::context().m_data.pMonitor.lock())
         Diagnostics::recordSampledPixels(monitor->m_id, static_cast<double>(sw) * static_cast<double>(sh));
 
     // Windows under the pane: the clean page, and a blur of its own for the face.
@@ -1986,7 +1987,7 @@ void CLayer::sampleQuartz(SPane& pane, const SP<Render::IFramebuffer>& source, c
             pane.hasSample = false;
             return;
         }
-        const auto  monitor = g_pHyprRenderer->m_renderData.pMonitor.lock();
+        const auto  monitor = VetroRender::context().m_data.pMonitor.lock();
         const float scale   = monitor && monitor->m_scale > 0.0f ? monitor->m_scale : 1.0f;
         pane.blurred        = Backdrop::blurInto(pane.page, pane.ownBlur, m_quartz.blur * scale, caller) ? pane.ownBlur : nullptr;
     } else if (!copyWithMips(pane.page, source, rect, caller)) {
@@ -2006,14 +2007,14 @@ void CLayer::sampleQuartz(SPane& pane, const SP<Render::IFramebuffer>& source, c
 }
 
 void CLayer::drawQuartz(const SP<Render::IFramebuffer>& target, const CBox& layerBox, const SMaskSource& mask, float opacity) {
-    const auto monitor = g_pHyprRenderer->m_renderData.pMonitor.lock();
+    const auto monitor = VetroRender::context().m_data.pMonitor.lock();
     auto&      programs = g_pGlobalState->meniscusPrograms;
     if (!monitor || !programs.quartzBlock)
         return;
 
     const auto  transform = Math::wlTransformToHyprutils(Math::invertTransform(monitor->m_transform));
     const CBox  bounds    = CBox{layerBox.x, layerBox.y, layerBox.w, layerBox.h}.intersection(CBox{{}, target->m_size});
-    const auto& damage    = g_pHyprRenderer->m_renderData.damage;
+    const auto& damage    = VetroRender::context().m_data.damage;
 
     auto& program = programs.quartz;
     auto  shader  = g_pHyprOpenGL->useShader(program.shader);
@@ -2063,7 +2064,7 @@ void CLayer::drawQuartz(const SP<Render::IFramebuffer>& target, const CBox& laye
         glUniform2f(program.uniform("pageSize"), static_cast<float>(pane.pageRect.w), static_cast<float>(pane.pageRect.h));
 
         for (const auto& quad : quadsOf(region)) {
-            Mat3x3 matrix = g_pHyprRenderer->projectBoxToTarget(quad, transform);
+            Mat3x3 matrix = g_pHyprRenderer->projectBoxToTarget(VetroRender::context(), quad, transform);
             matrix.transpose();
             shader->setUniformMatrix3fv(SHADER_PROJ, 1, GL_FALSE, matrix.getMatrix());
             glUniform2f(program.uniform("quadOrigin"), static_cast<float>(quad.x - layerBox.x), static_cast<float>(quad.y - layerBox.y));

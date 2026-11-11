@@ -1,3 +1,4 @@
+#include "RenderContext.hpp"
 #include "GlassSubsurfacePassElement.hpp"
 #include "GlassRenderer.hpp"
 #include "GlassSubsurfaceState.hpp"
@@ -7,7 +8,8 @@
 CGlassSubsurfacePassElement::CGlassSubsurfacePassElement(SData data)
     : m_data(std::move(data)) {}
 
-std::vector<UP<IPassElement>> CGlassSubsurfacePassElement::draw() {
+std::vector<UP<IPassElement>> CGlassSubsurfacePassElement::draw(Render::CRenderContext& ctx) {
+    const VetroRender::Scope renderScope(ctx);
     if (currentDebugMode() == EDebugMode::HINTS_ONLY)
         return {};
 
@@ -17,11 +19,13 @@ std::vector<UP<IPassElement>> CGlassSubsurfacePassElement::draw() {
     return {};
 }
 
-std::optional<CBox> CGlassSubsurfacePassElement::boundingBox() {
+std::optional<CBox> CGlassSubsurfacePassElement::boundingBox(Render::CRenderContext& ctx) {
+    const VetroRender::Scope renderScope(ctx);
     return SubsurfaceGeometry::toPaddedLogicalBox(m_data.itemLogicalBox, m_data.monitor.lock(), GlassRenderer::SAMPLE_PADDING_PX);
 }
 
-bool CGlassSubsurfacePassElement::needsLiveBlur() {
+bool CGlassSubsurfacePassElement::needsLiveBlur(Render::CRenderContext& ctx) {
+    const VetroRender::Scope renderScope(ctx);
     if (currentDebugMode() == EDebugMode::GL_WORK_ONLY)
         return false;
 
@@ -30,11 +34,13 @@ bool CGlassSubsurfacePassElement::needsLiveBlur() {
     return boundingBox().has_value();
 }
 
-bool CGlassSubsurfacePassElement::needsPrecomputeBlur() {
+bool CGlassSubsurfacePassElement::needsPrecomputeBlur(Render::CRenderContext& ctx) {
+    const VetroRender::Scope renderScope(ctx);
     return false;
 }
 
-bool CGlassSubsurfacePassElement::disableSimplification() {
+bool CGlassSubsurfacePassElement::disableSimplification(Render::CRenderContext& ctx) {
+    const VetroRender::Scope renderScope(ctx);
     // Left enabled — same reasoning as CGlassLayerPassElement: a discarded
     // element behind unchanged damage draws nothing, correctly, and
     // CGlassSubsurfaceState::m_redirectedThisFrame is the safety net against

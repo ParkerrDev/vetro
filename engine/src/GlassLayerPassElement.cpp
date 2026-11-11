@@ -1,3 +1,4 @@
+#include "RenderContext.hpp"
 #include "GlassLayerPassElement.hpp"
 #include "GlassLayerSurface.hpp"
 #include "GlassRenderer.hpp"
@@ -8,7 +9,8 @@
 CGlassLayerPassElement::CGlassLayerPassElement(const SGlassLayerPassData& data)
     : m_data(data) {}
 
-std::vector<UP<IPassElement>> CGlassLayerPassElement::draw() {
+std::vector<UP<IPassElement>> CGlassLayerPassElement::draw(Render::CRenderContext& ctx) {
+    const VetroRender::Scope renderScope(ctx);
     // debug:mode = hints_only: keep every hint below but do none of the GL
     // work, to isolate the render pass's own cost from the glass pipeline's.
     if (currentDebugMode() == EDebugMode::HINTS_ONLY)
@@ -18,9 +20,9 @@ std::vector<UP<IPassElement>> CGlassLayerPassElement::draw() {
         return {};
 
     if (m_data.model)
-        m_data.layerState->drawModel(g_pHyprRenderer->m_renderData.pMonitor.lock(), m_data.alpha, m_data.xray, m_data.under);
+        m_data.layerState->drawModel(VetroRender::context().m_data.pMonitor.lock(), m_data.alpha, m_data.xray, m_data.under);
     else
-        m_data.layerState->sampleAndRedirect(g_pHyprRenderer->m_renderData.pMonitor.lock(), m_data.alpha, m_data.xray);
+        m_data.layerState->sampleAndRedirect(VetroRender::context().m_data.pMonitor.lock(), m_data.alpha, m_data.xray);
 
     return {};
 }
@@ -33,15 +35,17 @@ std::optional<CBox> CGlassLayerPassElement::paddedLogicalBox() const {
     if (!layerSurface)
         return std::nullopt;
 
-    const auto monitor = g_pHyprRenderer->m_renderData.pMonitor.lock();
+    const auto monitor = VetroRender::context().m_data.pMonitor.lock();
     return LayerGeometry::computePaddedLogicalLayerBox(layerSurface, monitor, static_cast<float>(m_data.layerState->paddingPx()));
 }
 
-std::optional<CBox> CGlassLayerPassElement::boundingBox() {
+std::optional<CBox> CGlassLayerPassElement::boundingBox(Render::CRenderContext& ctx) {
+    const VetroRender::Scope renderScope(ctx);
     return paddedLogicalBox();
 }
 
-bool CGlassLayerPassElement::needsLiveBlur() {
+bool CGlassLayerPassElement::needsLiveBlur(Render::CRenderContext& ctx) {
+    const VetroRender::Scope renderScope(ctx);
     // debug:mode = gl_work_only: run the GL pipeline but withhold these
     // hints, isolating their render-pass cost from the pipeline's own GL cost.
     if (currentDebugMode() == EDebugMode::GL_WORK_ONLY)
@@ -64,14 +68,16 @@ bool CGlassLayerPassElement::needsLiveBlur() {
     // frame. One that does not needs this hint: it un-occludes the background
     // under opaque windows so the snapshot copy picks it up this frame.
     // Windows under it are read from the frame, which must be drawn there.
-    return !(m_data.xray && m_data.under.empty() && m_data.layerState->xraySnapshotCovers(g_pHyprRenderer->m_renderData.pMonitor.lock()));
+    return !(m_data.xray && m_data.under.empty() && m_data.layerState->xraySnapshotCovers(VetroRender::context().m_data.pMonitor.lock()));
 }
 
-bool CGlassLayerPassElement::needsPrecomputeBlur() {
+bool CGlassLayerPassElement::needsPrecomputeBlur(Render::CRenderContext& ctx) {
+    const VetroRender::Scope renderScope(ctx);
     return false;
 }
 
-bool CGlassLayerPassElement::disableSimplification() {
+bool CGlassLayerPassElement::disableSimplification(Render::CRenderContext& ctx) {
+    const VetroRender::Scope renderScope(ctx);
     // Left enabled, including under debug:mode = gl_work_only: an element whose
     // padded box misses the render pass's damage is safely discarded here — no
     // partial-box artifact, same reasoning as CGlassPassElement. The post-surface
