@@ -13,3 +13,4 @@
 # engine was the whole tree, and "engine" for a commit made since the engine
 # moved into this repository.
 efb50993780079460b0cbed1363e2166a2de1d9f 02308d97cc3b9ef49ea951083a00ad7a85a6a9ef engine  # Hyprland 0.56.2, Apple's own glass shader as the Author's pick, windows through windows and never the widgets, genie, jelly and wobble
+acc1aa0bfd4bd575dcb0f76c35ccf12b660a1ab9 4a940f48270642d36fe55502fadc650bed646c7d engine  # Hyprland 0.57.1, render contexts, window/layer glass and motion validated
