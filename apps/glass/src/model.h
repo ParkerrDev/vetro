@@ -32,6 +32,12 @@ bool model_init(Model *model);
  * of it), and takes it as applied. */
 bool model_save(Model *model);
 
+/* Named looks live beside glass.conf. Saving one never applies it or replaces
+ * an existing name. Loading one is an undoable preview, until Apply is used. */
+bool model_save_look(const Model *model, const char *name);
+bool model_load_look(Model *model, const char *name);
+char **model_list_looks(const Model *model); /* g_strfreev */
+
 /* Whether what is shown differs from what is applied. */
 bool model_dirty(const Model *model);
 

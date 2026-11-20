@@ -69,6 +69,105 @@ bool model_save(Model *model) {
     return ok;
 }
 
+static char *look_path(const Model *model, const char *name) {
+    if (name == NULL || !g_utf8_validate(name, -1, NULL) || strlen(name) > 96 ||
+        *name == '\0' || *name == '.' || g_ascii_isspace(*name) ||
+        g_ascii_isspace(name[strlen(name) - 1]))
+        return NULL;
+    for (const char *p = name; *p; p = g_utf8_next_char(p)) {
+        const gunichar c = g_utf8_get_char(p);
+        if (!g_unichar_isalnum(c) && c != ' ' && c != '-' && c != '_')
+            return NULL;
+    }
+    char *folder = g_path_get_dirname(model->path);
+    char *file = g_strconcat(name, ".conf", NULL);
+    char *path = g_build_filename(folder, "looks", file, NULL);
+    g_free(folder);
+    g_free(file);
+    return path;
+}
+
+bool model_save_look(const Model *model, const char *name) {
+    char *path = look_path(model, name);
+    if (path == NULL)
+        return false;
+    char *folder = g_path_get_dirname(path);
+    size_t length = 0;
+    char *text = format_text(model, &length);
+    bool ok = text != NULL && g_mkdir_with_parents(folder, 0700) == 0;
+    GFile *file = g_file_new_for_path(path);
+    /* Exclusive creation also refuses a symlink placed at this name. */
+    GFileOutputStream *stream = ok ? g_file_create(file, G_FILE_CREATE_PRIVATE, NULL, NULL) : NULL;
+    ok = stream != NULL;
+    if (stream != NULL) {
+        ok = g_output_stream_write_all(G_OUTPUT_STREAM(stream), text, length, NULL, NULL, NULL);
+        ok = g_output_stream_close(G_OUTPUT_STREAM(stream), NULL, NULL) && ok;
+        g_object_unref(stream);
+        if (!ok)
+            (void)g_file_delete(file, NULL, NULL);
+    }
+    g_object_unref(file);
+    g_free(path);
+    g_free(folder);
+    g_free(text);
+    return ok;
+}
+
+bool model_load_look(Model *model, const char *name) {
+    char *path = look_path(model, name);
+    if (path == NULL)
+        return false;
+    GFile *file = g_file_new_for_path(path);
+    GFileInfo *info = g_file_query_info(file, "standard::type,standard::size", G_FILE_QUERY_INFO_NOFOLLOW_SYMLINKS, NULL, NULL);
+    bool ok = info != NULL && g_file_info_get_file_type(info) == G_FILE_TYPE_REGULAR &&
+              g_file_info_get_size(info) <= MAX_FILE;
+    char *text = NULL;
+    gsize length = 0;
+    ok = ok && g_file_load_contents(file, NULL, &text, &length, NULL, NULL) && length <= MAX_FILE;
+    GlassTuning tuning;
+    const GlassBytes bytes = {.data = (const uint8_t *)text, .len = length};
+    ok = ok && glass_tuning_default(&tuning) >= 0 && glass_tuning_parse(bytes, &tuning) == 0;
+    if (ok) {
+        model_checkpoint(model);
+        model->current = tuning;
+    }
+    g_clear_object(&info);
+    g_object_unref(file);
+    g_free(text);
+    g_free(path);
+    return ok;
+}
+
+static gint compare_names(gconstpointer a, gconstpointer b) {
+    return g_utf8_collate(*(const char *const *)a, *(const char *const *)b);
+}
+
+char **model_list_looks(const Model *model) {
+    char *parent = g_path_get_dirname(model->path);
+    char *folder = g_build_filename(parent, "looks", NULL);
+    GDir *dir = g_dir_open(folder, 0, NULL);
+    GPtrArray *names = g_ptr_array_new_with_free_func(g_free);
+    const char *file;
+    while (dir != NULL && (file = g_dir_read_name(dir)) != NULL) {
+        if (!g_str_has_suffix(file, ".conf"))
+            continue;
+        char *name = g_strndup(file, strlen(file) - 5);
+        char *path = look_path(model, name);
+        if (path != NULL && !g_file_test(path, G_FILE_TEST_IS_SYMLINK) && g_file_test(path, G_FILE_TEST_IS_REGULAR))
+            g_ptr_array_add(names, name);
+        else
+            g_free(name);
+        g_free(path);
+    }
+    if (dir != NULL)
+        g_dir_close(dir);
+    g_free(parent);
+    g_free(folder);
+    g_ptr_array_sort(names, compare_names);
+    g_ptr_array_add(names, NULL);
+    return (char **)g_ptr_array_free(names, FALSE);
+}
+
 bool model_dirty(const Model *model) {
     assert(model != NULL);
     for (unsigned i = 0; i < GLASS_TUNING_KNOBS; ++i) {

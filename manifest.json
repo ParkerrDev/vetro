@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "dev.vetro.control",
+  "name": "Vetro",
+  "version": "1.0.0",
+  "author": "Andrew Parker Hunt",
+  "license": "MIT AND BSD-3-Clause AND GPL-3.0-only AND OFL-1.1 AND Apache-2.0",
+  "description": "Liquid glass for Omarchy\u2019s bar, menu, panels, notifications, lock input and windows. The tray button opens explicit setup first, then Vetro Glass and repair controls. Native engine build required; uninstall Vetro before removing this launcher.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "marketplace/BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Vetro",
+    "description": "Set up Vetro, tune its glass, or turn it on and off.",
+    "category": "Appearance",
+    "allowMultiple": false
+  }
+}

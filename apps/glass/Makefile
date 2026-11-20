@@ -44,8 +44,13 @@ install: vetro-glass
 	ln -sfn $(abspath $(BRANDING))/vetro.svg $(PREFIX)/share/icons/hicolor/scalable/apps/dev.vetro.Glass.svg
 	ln -sfn $(abspath $(BRANDING))/vetro-symbolic.svg $(PREFIX)/share/icons/hicolor/symbolic/apps/dev.vetro.Glass-symbolic.svg
 
+test: $(GLASS_LIB)
+	mkdir -p .build
+	$(CC) $(CFLAGS) -Isrc tests/model.c src/model.c $(GLASS_LIB) $(LDLIBS) -o .build/test-model
+	.build/test-model
+
 clean:
 	rm -f vetro-glass
 	rm -rf .build
 
-.PHONY: all install clean
+.PHONY: all install clean test

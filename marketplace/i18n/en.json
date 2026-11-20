@@ -1,0 +1,6 @@
+{
+  "setup": "Vetro: click to review and set up",
+  "ready": "Vetro: click to tune; right-click to turn off",
+  "off": "Vetro is off: click to tune; right-click to turn on",
+  "repair": "Vetro glass is unavailable: click to inspect and repair"
+}

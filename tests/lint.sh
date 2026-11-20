@@ -140,6 +140,7 @@ done
 # --- the shell plugins
 plugins=(shell/vetro.* addons/launch/plugin/vetro.cards)
 if command -v omarchy-plugin-validate >/dev/null; then
+  omarchy-plugin-validate . >/dev/null 2>&1 || fail "the marketplace entry is not a valid Omarchy plugin"
   for plugin in "${plugins[@]}"; do
     # the library the plugins share is not a plugin
     [ -f "$plugin/manifest.json" ] || continue
@@ -186,7 +187,7 @@ else
 fi
 
 # --- the tests that run the scripts against stand-ins
-for test in command browser engine install migrate addons system qml names; do
+for test in command browser engine install migrate addons system qml names marketplace; do
   if ! bash "tests/$test.sh"; then
     fail "tests/$test.sh"
   fi

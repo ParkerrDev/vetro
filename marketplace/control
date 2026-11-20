@@ -1,0 +1,76 @@
+#!/bin/bash
+# The marketplace installs this checkout, but enabling its widget never installs
+# or activates the desktop bundle. Setup runs only after an explicit terminal
+# confirmation. Commands and paths are separate arguments throughout.
+set -euo pipefail
+repo=$(cd -- "$(dirname -- "$(readlink -f -- "$0")")/.." && pwd -P)
+vetro=$HOME/.local/bin/vetro
+state=${XDG_STATE_HOME:-$HOME/.local/state}/vetro
+installed() { [[ -x $vetro && -e $HOME/.config/hypr/vetro.lua ]]; }
+confirm() {
+  [[ -t 0 && -t 1 ]] || { echo 'Setup needs an interactive terminal; nothing changed.' >&2; exit 1; }
+  local answer
+  read -r -p "$1 [y/N] " answer
+  [[ $answer == y || $answer == Y ]]
+}
+case ${1:-} in
+  state)
+    mode=setup
+    if installed; then
+      mode=repair
+      if [[ -e $state/off ]]; then mode=off
+      elif [[ ! -e ${XDG_RUNTIME_DIR:-/nonexistent}/vetro-glass-stood-down ]] &&
+        hyprctl plugin list 2>/dev/null | grep -i '^Plugin hyprglass' >/dev/null; then mode=ready
+      fi
+    fi
+    printf '%s\n' "$mode"
+    ;;
+  open)
+    installed || { echo 'Set up Vetro first.' >&2; exit 1; }
+    exec "$vetro" tune
+    ;;
+  toggle)
+    installed || { echo 'Set up Vetro first.' >&2; exit 1; }
+    exec "$vetro" toggle
+    ;;
+  setup)
+    # An existing installation may be a development checkout. Never repoint it
+    # to the marketplace copy just because its launcher was added.
+    if installed; then exec "$vetro" tune; fi
+    cat <<'PLAN'
+Vetro setup
+
+This will build the pinned glass engine and notification daemon, install
+user-owned links, fonts and update/theme hooks, and add a marked optional
+module to ~/.config/hypr/hyprland.lua. Existing files are backed up.
+
+Activation replaces the bar surface, menu, notifications, volume display and
+lock input, and adds glass and motion to windows. Your theme, wallpaper and
+bar widgets stay yours. Optional launch cards and the launch theme are excluded.
+
+Build requirements: git, jq, Python 3, Rust/Cargo, a C/C++ compiler, make,
+pkg-config and matching Hyprland headers. The tuner also needs GTK4 and
+libadwaita. Missing packages are not installed by this launcher.
+
+Undo: vetro off
+Remove: run this checkout's uninstall.sh BEFORE omarchy plugin remove dev.vetro.control.
+PLAN
+    confirm 'Build and install Vetro?' || exit 0
+    for tool in git jq python3 cargo g++ make pkg-config; do
+      command -v "$tool" >/dev/null || { echo "Missing dependency: $tool" >&2; exit 1; }
+    done
+    pkg-config --exists hyprland gtk4 libadwaita-1 || { echo 'Install matching Hyprland headers, GTK4 and libadwaita first.' >&2; exit 1; }
+    "$repo/install.sh" --without launch --without theme
+    if confirm 'Activate Vetro now?'; then "$vetro" on; fi
+    ;;
+  repair)
+    installed || exec "$0" setup
+    "$vetro" status
+    "$vetro" doctor || true
+    confirm 'Rebuild the pinned engine and try loading it?' || exit 0
+    "$vetro" build
+    "$vetro" glass load
+    "$vetro" status
+    ;;
+  *) echo 'Usage: control state|open|toggle|setup|repair' >&2; exit 2 ;;
+esac

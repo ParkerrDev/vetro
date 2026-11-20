@@ -36,6 +36,8 @@ typedef struct {
     AdwBanner *banner;
     AdwToastOverlay *toasts;
     AdwComboRow *look;
+    GtkDropDown *saved_looks;
+    bool comparing;
     GSimpleAction *undo, *redo, *apply, *revert;
     guint flush;
     int burst_knob;  /* the knob the last change was to, or NO_KNOB */
@@ -111,7 +113,10 @@ static gboolean flush(gpointer data) {
     App *app = data;
     app->flush = 0;
     char request[REQUEST_MAX];
-    if (model_preview_request(&app->model, request, sizeof(request)))
+    Model preview = app->model;
+    if (app->comparing)
+        preview.current = app->model.applied;
+    if (model_preview_request(&preview, request, sizeof(request)))
         tell_engine(app, request);
     return G_SOURCE_REMOVE;
 }
@@ -430,6 +435,145 @@ static void cancel_flush(App *app) {
     }
 }
 
+static void compare_set(App *app, bool held) {
+    if (app->comparing == held)
+        return;
+    app->comparing = held;
+    cancel_flush(app);
+    (void)flush(app);
+}
+
+static void compare_pressed(GtkGestureClick *gesture, int count, double x, double y, gpointer data) {
+    (void)count; (void)x; (void)y;
+    gtk_widget_grab_focus(gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(gesture)));
+    gtk_gesture_set_state(GTK_GESTURE(gesture), GTK_EVENT_SEQUENCE_CLAIMED);
+    compare_set(data, true);
+}
+
+static void compare_released(GtkGestureClick *gesture, int count, double x, double y, gpointer data) {
+    (void)gesture; (void)count; (void)x; (void)y;
+    compare_set(data, false);
+}
+
+static void compare_cancelled(GtkGesture *gesture, GdkEventSequence *sequence, gpointer data) {
+    (void)gesture; (void)sequence;
+    compare_set(data, false);
+}
+
+static gboolean compare_key_pressed(GtkEventControllerKey *controller, guint key, guint code, GdkModifierType state, gpointer data) {
+    (void)controller; (void)code; (void)state;
+    if (key != GDK_KEY_space && key != GDK_KEY_Return)
+        return FALSE;
+    compare_set(data, true);
+    return TRUE;
+}
+
+static void compare_key_released(GtkEventControllerKey *controller, guint key, guint code, GdkModifierType state, gpointer data) {
+    (void)controller; (void)code; (void)state;
+    if (key == GDK_KEY_space || key == GDK_KEY_Return)
+        compare_set(data, false);
+}
+
+static void compare_focus_left(GtkEventControllerFocus *controller, gpointer data) {
+    (void)controller;
+    compare_set(data, false);
+}
+
+static void window_active_changed(GObject *window, GParamSpec *spec, gpointer data) {
+    (void)spec;
+    if (!gtk_window_is_active(GTK_WINDOW(window)))
+        compare_set(data, false);
+}
+
+static void refresh_looks(App *app) {
+    char **names = model_list_looks(&app->model);
+    GtkStringList *list = gtk_string_list_new((const char *const *)names);
+    gtk_drop_down_set_model(app->saved_looks, G_LIST_MODEL(list));
+    g_object_unref(list);
+    g_strfreev(names);
+}
+
+static void save_look_answer(GObject *source, GAsyncResult *result, gpointer data) {
+    App *app = data;
+    AdwAlertDialog *dialog = ADW_ALERT_DIALOG(source);
+    const char *answer = adw_alert_dialog_choose_finish(dialog, result);
+    if (strcmp(answer, "save") != 0)
+        return;
+    GtkEditable *entry = GTK_EDITABLE(adw_alert_dialog_get_extra_child(dialog));
+    if (!model_save_look(&app->model, gtk_editable_get_text(entry))) {
+        toast(app, "Could not save: use a new name with letters, numbers, spaces, hyphens or underscores");
+        return;
+    }
+    refresh_looks(app);
+    toast(app, "Look saved. Apply still controls what stays at login");
+}
+
+static void save_look_clicked(GtkButton *button, gpointer data) {
+    (void)button;
+    App *app = data;
+    AdwAlertDialog *dialog = ADW_ALERT_DIALOG(adw_alert_dialog_new("Save this look", "Keep these settings under a new name. Existing looks are never overwritten."));
+    GtkWidget *entry = gtk_entry_new();
+    gtk_entry_set_placeholder_text(GTK_ENTRY(entry), "Look name");
+    gtk_entry_set_max_length(GTK_ENTRY(entry), 64);
+    adw_alert_dialog_set_extra_child(dialog, entry);
+    adw_alert_dialog_add_responses(dialog, "cancel", "Cancel", "save", "Save look", NULL);
+    adw_alert_dialog_set_response_appearance(dialog, "save", ADW_RESPONSE_SUGGESTED);
+    adw_alert_dialog_set_close_response(dialog, "cancel");
+    adw_alert_dialog_choose(dialog, GTK_WIDGET(app->window), NULL, save_look_answer, app);
+}
+
+static void load_look_clicked(GtkButton *button, gpointer data) {
+    (void)button;
+    App *app = data;
+    GtkStringObject *selected = GTK_STRING_OBJECT(gtk_drop_down_get_selected_item(app->saved_looks));
+    if (selected == NULL || !model_load_look(&app->model, gtk_string_object_get_string(selected))) {
+        toast(app, "Select a saved look to preview");
+        return;
+    }
+    app->burst_knob = NO_KNOB;
+    refresh(app);
+    changed(app);
+    toast(app, "Look previewed. Apply to keep it, or Undo to go back");
+}
+
+static GtkWidget *saved_looks_group(App *app) {
+    GtkWidget *group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(group), "Your looks");
+    adw_preferences_group_set_description(ADW_PREFERENCES_GROUP(group), "Keep several setups. Preview a look, compare it with your last applied settings, then Apply when ready.");
+    GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    app->saved_looks = GTK_DROP_DOWN(gtk_drop_down_new(NULL, NULL));
+    gtk_widget_set_hexpand(GTK_WIDGET(app->saved_looks), TRUE);
+    gtk_widget_set_tooltip_text(GTK_WIDGET(app->saved_looks), "Saved looks");
+    refresh_looks(app);
+    gtk_box_append(GTK_BOX(row), GTK_WIDGET(app->saved_looks));
+    GtkWidget *load = gtk_button_new_with_label("Preview");
+    g_signal_connect(load, "clicked", G_CALLBACK(load_look_clicked), app);
+    gtk_box_append(GTK_BOX(row), load);
+    GtkWidget *save = gtk_button_new_with_label("Save look");
+    g_signal_connect(save, "clicked", G_CALLBACK(save_look_clicked), app);
+    gtk_box_append(GTK_BOX(row), save);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(group), row);
+    GtkWidget *compare = gtk_button_new_with_label("Hold to compare with last applied");
+    gtk_widget_set_margin_top(compare, 8);
+    gtk_widget_set_tooltip_text(compare, "Hold the mouse button, Space or Enter. Release to return to your preview");
+    GtkGesture *click = gtk_gesture_click_new();
+    gtk_event_controller_set_propagation_phase(GTK_EVENT_CONTROLLER(click), GTK_PHASE_CAPTURE);
+    g_signal_connect(click, "pressed", G_CALLBACK(compare_pressed), app);
+    g_signal_connect(click, "released", G_CALLBACK(compare_released), app);
+    g_signal_connect(click, "cancel", G_CALLBACK(compare_cancelled), app);
+    gtk_widget_add_controller(compare, GTK_EVENT_CONTROLLER(click));
+    GtkEventController *key = gtk_event_controller_key_new();
+    gtk_event_controller_set_propagation_phase(key, GTK_PHASE_CAPTURE);
+    g_signal_connect(key, "key-pressed", G_CALLBACK(compare_key_pressed), app);
+    g_signal_connect(key, "key-released", G_CALLBACK(compare_key_released), app);
+    gtk_widget_add_controller(compare, key);
+    GtkEventController *focus = gtk_event_controller_focus_new();
+    g_signal_connect(focus, "leave", G_CALLBACK(compare_focus_left), app);
+    gtk_widget_add_controller(compare, focus);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(group), compare);
+    return group;
+}
+
 /* Writes the file and has the engine read it: the glass at every login from
  * now on. False, with the reason shown, when the file could not be written. */
 static bool apply_now(App *app) {
@@ -535,6 +679,7 @@ static void on_close_answer(GObject *source, GAsyncResult *result, gpointer data
 static gboolean on_close_request(GtkWindow *window, gpointer data) {
     (void)window;
     App *app = data;
+    compare_set(app, false);
     if (!model_dirty(&app->model))
         return FALSE;
     AdwDialog *dialog = adw_alert_dialog_new(
@@ -617,6 +762,7 @@ static GtkWidget *page(App *app) {
     GtkWidget *content = adw_preferences_page_new();
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(content), ADW_PREFERENCES_GROUP(brand_group()));
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(content), ADW_PREFERENCES_GROUP(preset_group(app)));
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(content), ADW_PREFERENCES_GROUP(saved_looks_group(app)));
     for (unsigned group = 0; group < GROUPS; ++group)
         adw_preferences_page_add(ADW_PREFERENCES_PAGE(content), ADW_PREFERENCES_GROUP(knob_group(app, group)));
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(content), ADW_PREFERENCES_GROUP(look_group(app)));
@@ -643,6 +789,7 @@ static void on_activate(GtkApplication *application, gpointer data) {
     app->burst_knob = NO_KNOB;
     add_actions(app, window, application);
     g_signal_connect(window, "close-request", G_CALLBACK(on_close_request), app);
+    g_signal_connect(window, "notify::is-active", G_CALLBACK(window_active_changed), app);
 
     app->banner = ADW_BANNER(adw_banner_new("The glass running now is from before tuning: run vetro glass load, or log in again"));
     app->toasts = ADW_TOAST_OVERLAY(adw_toast_overlay_new());

@@ -16,10 +16,8 @@
 #                                 cannot be left out
 #   ./install.sh --on             and then switch it on (vetro on)
 #
-# Piped from the web it fetches Vetro first, into ~/.local/share/vetro (or
-# updates the copy there), and runs that copy's install.sh:
-#
-#   curl -fsSL https://raw.githubusercontent.com/ParkerrDev/vetro/master/install.sh | bash -s -- --on
+# Run from a reviewed checkout, or use the marketplace setup control. This
+# installer never downloads and executes a newer copy of itself.
 #
 # Everything but the settings lands as a symlink into this folder, so editing
 # the folder changes the desktop and removing it takes one script
@@ -48,26 +46,12 @@
 # shellcheck source-path=SCRIPTDIR
 set -euo pipefail
 
-# From a pipe there is no folder beside this script. Rust, which the engine
-# and the notification daemon are built with, comes from Omarchy's own command
-# when it is missing (rustup, in the home folder, no root).
-if [ ! -f "$(dirname "$(readlink -f "$0")")/lib/common.sh" ]; then
-  dest=${VETRO_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/vetro}
-  command -v git >/dev/null || { echo "Vetro needs git" >&2; exit 1; }
-  if [ -d "$dest/.git" ]; then
-    echo "Updating $dest"
-    git -C "$dest" pull --quiet --ff-only
-  else
-    echo "Fetching Vetro into $dest"
-    git clone --quiet https://github.com/ParkerrDev/vetro "$dest"
-  fi
-  export PATH=$HOME/.cargo/bin:$PATH
-  if ! command -v cargo >/dev/null; then
-    command -v omarchy-install-dev-env >/dev/null || { echo "Vetro is for Omarchy 4" >&2; exit 1; }
-    echo "Installing Rust (omarchy-install-dev-env rust)"
-    omarchy-install-dev-env rust </dev/null
-  fi
-  exec "$dest/install.sh" "$@" </dev/null
+# Refuse a detached download or pipe: the checkout is the source the user
+# reviewed. Builds fetch only the engine revisions in engine/pins.
+if [[ ! -f ${BASH_SOURCE[0]:-} ]] ||
+  [[ ! -f $(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/common.sh ]]; then
+  echo 'Install from a reviewed Vetro checkout, or use omarchy plugin add https://github.com/ParkerrDev/vetro --enable.' >&2
+  exit 1
 fi
 
 ROOT=$(dirname "$(readlink -f "$0")")

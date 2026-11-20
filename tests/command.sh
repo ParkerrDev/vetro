@@ -65,6 +65,7 @@ called "hyprctl plugin load $H/.local/lib/vetro/hyprglass.so" || fail "glass loa
 has "the glass colours go in with the engine" "$H/.config/omarchy/shell.toml" "# >>> vetro glass"
 has "the bar's own colour is black, so no theme tints the pane" "$H/.config/omarchy/shell.toml" 'background = "#000000"'
 says "status says the engine is loaded" "engine: loaded" run vetro status
+says "a long plugin reply cannot hide the loaded engine through SIGPIPE" "engine: loaded" run FAKE_PLUGIN_LIST_PADDING=1 vetro status
 forget_calls
 run vetro glass load
 if called "plugin load"; then fail "glass load loaded the engine twice"; fi

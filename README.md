@@ -15,11 +15,13 @@ Omarchy's floating parts are flat see-through rectangles over a blur. Hyprland c
 </p>
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ParkerrDev/vetro/master/install.sh | bash -s -- --on
+omarchy plugin add https://github.com/ParkerrDev/vetro --enable
+omarchy bar move dev.vetro.control --section tray
 ```
 
-> Omarchy 4 on Hyprland 0.56.2: the engine is built only for a Hyprland it has been seen working with. No root password. Rust is installed for you if it is missing.
-> Run the same line again to update. `vetro off` takes the glass away; `~/.local/share/vetro/uninstall.sh` takes Vetro out.
+The Vetro button opens setup in a terminal, shows the changes and asks before installing or activating anything. After setup it opens **Vetro Glass**; right-click turns Vetro on or off. The button can stay in the tray drawer. Adding it to an existing Vetro installation uses that installation without moving it.
+
+> Omarchy 4.5; tested engine pins for Hyprland 0.56.2 and 0.57.1. Other compositor builds keep plain blur until a matching engine has been validated. `vetro off` restores the desktop. Uninstall the bundle before removing its marketplace checkout; see Installation below.
 
 ---
 
@@ -80,19 +82,17 @@ Omarchy's shell reads `~/.config/omarchy/shell.toml` over the theme's own, key b
 
 <br>
 
-### One line
+### Marketplace
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/ParkerrDev/vetro/master/install.sh | bash -s -- --on
-```
+Use the plugin command above, then click its button. The launcher installs no packages and executes no setup on enable. It asks before building and again before activation. Launch cards and the optional launch theme are excluded from this setup.
 
-It:
+Requirements: Omarchy 4.5, Quickshell, Python 3, jq, git, Rust/Cargo, a C/C++ compiler, make, pkg-config, matching Hyprland headers and their development dependencies, GTK4 and libadwaita. `vetro doctor` reports missing optional desktop integration tools. Network access is needed to fetch pinned engine sources and Cargo dependencies during builds; the control widget itself makes no network requests.
 
-1. clones Vetro into `~/.local/share/vetro`, or updates the copy there;
-2. installs Rust with Omarchy's `omarchy-install-dev-env rust` if `cargo` is missing;
-3. links the command, the Lua file, the shell plugins, the hooks and the fonts into your home folder, and adds one marked line to the end of `~/.config/hypr/hyprland.lua`;
-4. builds the glass engine, the notification daemon and the launch cards' daemon;
-5. with `--on`, switches it on. Without it nothing changes on screen until `vetro on`.
+The installer links commands, shell plugins, fonts and theme/update hooks into your home directory, adds a marked optional module to `~/.config/hypr/hyprland.lua`, and builds the engine and notification daemon. Activation changes the shell surfaces and toolkit appearance described above. It never selects another theme or wallpaper. Existing regular files and foreign symlinks are backed up beside the installed link; removal restores the original when that backup is available.
+
+The former download-to-shell bootstrap is no longer supported; setup runs the checkout you reviewed.
+
+Update the marketplace checkout with `omarchy plugin update dev.vetro.control`, then run its `install.sh` to refresh generated parts. Do not remove the checkout while the bundle is installed, because its files are linked from there.
 
 ### By hand
 
@@ -117,7 +117,12 @@ Everything lands as a symlink into the clone, and running `install.sh` again cha
 ### Uninstall
 
 ```bash
-~/.local/share/vetro/uninstall.sh            # --purge: the built engine and the saved state too
+# Marketplace installation: remove the bundle first, then its launcher.
+~/.config/omarchy/plugins/dev.vetro.control/uninstall.sh
+omarchy plugin remove dev.vetro.control
+
+# Manual installation:
+~/.local/share/vetro/uninstall.sh
 ```
 
 </details>
@@ -153,7 +158,7 @@ vetro doctor             check the installation, one line a check
 
 Open **Vetro Glass** from the app launcher (the glass V), or run `vetro tune`. Its sliders cover how clear or tinted the glass is, the frost, colour and inner light, how much darker it gets over bright things, the lens with its bend and colour fringe, the darkened edge, where the light comes from, the rim, the hairline and the glow, whether windows show through, and the motion. The presets set all of them at once: **Author's pick** (the default), iOS 27, Ultra clear, Clear, Tinted, Fully tinted, iOS 26 and Lens.
 
-Every change is written to `~/.config/vetro/glass.conf`, plain `key = value` lines, and drawn at once. After editing the file by hand run `hyprctl hyprglass tune reload`; to try values without writing them, `hyprctl hyprglass tune frost=12 tint=0.4`.
+Changes preview live; **Apply** writes `~/.config/vetro/glass.conf` for future logins. Undo, Redo and Revert let you experiment without losing the applied settings. **Your looks** saves named setups separately; Preview loads one as an undoable change. **Hold to compare** temporarily shows the last applied settings, returning to the preview when released or when the window loses focus. Names never overwrite existing looks. Saved looks remain in `~/.config/vetro/looks/` after uninstall. After editing the file by hand run `hyprctl hyprglass tune reload`; to try values without writing them, `hyprctl hyprglass tune frost=12 tint=0.4`.
 
 Earlier looks are one command away: `vetro glass look lens`, `macos`, `liquid`, `regular`, `cloud`, `clear` or `sharp`. `vetro glass look apple` comes back to the tuned glass.
 
@@ -186,7 +191,7 @@ Also in Vetro Glass, and in the same file:
 
 Each addon in `addons/` is found at run time, and `vetro on` and `off` ask each installed one to follow.
 
-- **launch**: two glass cards on the desktop, the next SpaceX launches and the weather, kept fresh by a small Rust daemon that sleeps until a fetch is due. The lock screen shows the next launch too. See `addons/launch/README.md`.
+- **launch**: two glass cards on the desktop, the next SpaceX launches and the weather, kept fresh by a small Rust daemon that sleeps until a fetch is due. See `addons/launch/README.md`.
 - **theme**: the launch look as an Omarchy theme, `launch`, in the theme menu like any other.
 - **login**: the login screen in the same style. It needs root, so `install.sh` leaves it alone: `addons/login/install-system.sh`.
 
@@ -261,6 +266,7 @@ Found a bug? Open an issue with what `vetro doctor` prints.
 
 Vetro is MIT (`LICENSE`). It stands on:
 
+- [Liquid Glass for Omarchy](https://github.com/fasi96/omarchy-liquid-glass) by fasi96 (MIT), whose named looks, comparison control and explicit marketplace setup informed the corresponding Vetro features; these are implemented in Vetro’s native tuner and installer;
 - [hyprglass](https://github.com/hyprnux/hyprglass) by Hyprnux, the engine it forks (BSD 3-Clause, `engine/LICENSE`);
 - [HyprPerks' Hyprland Desktop Experience](https://github.com/hyprwm/hyprperks-dotfiles), where Vetro's shell began, released under MIT by Hyprland Development thanks to Omarchy's Omacom Foundation sponsorship;
 - [Omarchy](https://github.com/basecamp/omarchy), whose menu, workspace and lock plugins Vetro's are cloned from (MIT);

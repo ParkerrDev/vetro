@@ -52,16 +52,20 @@ die() {
 # link TARGET NAME: make NAME a symlink to TARGET. A file of the user's own in
 # the way is kept beside it as NAME.pre-vetro, and uninstall.sh puts it back.
 link() {
-  local target=$1 name=$2 keep
+  local target=$1 name=$2 keep suffix=0
   mkdir -p "$(dirname "$name")"
   if [ -L "$name" ]; then
     [ "$(readlink "$name")" = "$target" ] && return 0
-    rm -f "$name"
-  elif [ -e "$name" ]; then
+    # A link into Vetro can be refreshed. A link into someone else's dotfiles
+    # is their configuration, just as a regular file is: keep and restore it.
+    if ours "$name"; then rm -f "$name"; fi
+  fi
+  if [ -e "$name" ] || [ -L "$name" ]; then
     keep=$name.pre-vetro
-    if [ -e "$keep" ] || [ -L "$keep" ]; then
-      keep=$keep.$(date +%s)
-    fi
+    while [ -e "$keep" ] || [ -L "$keep" ]; do
+      suffix=$((suffix + 1))
+      keep=$name.pre-vetro.$suffix
+    done
     mv "$name" "$keep"
     echo "  kept the old $name as $keep"
   fi

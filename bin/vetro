@@ -107,7 +107,9 @@ glass_fits_build() {
   [ "$(sha256sum <"/proc/$pid/exe" | cut -d' ' -f1)" = "$sum" ]
 }
 
-glass_loaded() { hyprctl plugin list 2>/dev/null | grep -qi '^Plugin hyprglass'; }
+# Consume the full reply: grep -q can close early, give hyprctl SIGPIPE and
+# make pipefail turn a matching, loaded engine into a false negative.
+glass_loaded() { hyprctl plugin list 2>/dev/null | grep -i '^Plugin hyprglass' >/dev/null; }
 
 # The glass draws when the engine is in Hyprland and the config has not stood
 # down from being read in a loop.

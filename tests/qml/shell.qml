@@ -10,7 +10,8 @@ ShellRoot {
     "vetro.barglass/Glass.qml", "vetro.center/Center.qml", "vetro.center-button/Bell.qml",
     "vetro.lock/Service.qml", "vetro.lock/LockView.qml", "vetro.menu/Menu.qml", "vetro.menu/BarWidget.qml",
     "vetro.notifications/Service.qml", "vetro.osd/Osd.qml", "vetro.cards/Panels.qml",
-    "vetro.workspaces/Workspaces.qml", "vetro.bar/Bar.qml", "vetro.bar/VetroPane.qml"
+    "vetro.workspaces/Workspaces.qml", "vetro.bar/Bar.qml", "vetro.bar/VetroPane.qml",
+    "vetro.marketplace/marketplace/BarWidget.qml"
   ]
 
   Component.onCompleted: {

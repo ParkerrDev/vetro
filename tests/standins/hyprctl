@@ -19,6 +19,7 @@ case "${1:-} ${2:-}" in
   "plugin list")
     if [ -e "$S/plugin" ]; then
       printf 'Plugin hyprglass by Hyprnux, forked by Vetro:\n\tHandle: 0x1\n\tVersion: test\n'
+      if [ -n "${FAKE_PLUGIN_LIST_PADDING:-}" ]; then printf '%100000s\n' ''; fi
     else
       echo "no plugins loaded"
     fi

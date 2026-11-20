@@ -33,6 +33,7 @@ mkdir -p "$WORK/cfg"
 ln -s /usr/share/omarchy/shell/Commons "$WORK/cfg/Commons"
 ln -s /usr/share/omarchy/shell/Ui "$WORK/cfg/Ui"
 cp "$REPO/tests/qml/shell.qml" "$WORK/cfg/shell.qml"
+ln -s "$REPO" "$H/.config/omarchy/plugins/vetro.marketplace"
 
 env -i HOME="$H" PATH=/usr/bin XDG_RUNTIME_DIR="$H/run" QT_QPA_PLATFORM=offscreen OMARCHY_PATH=/usr/share/omarchy \
   PLUGINS="$H/.config/omarchy/plugins" nice -n 19 timeout 12 quickshell -n -p "$WORK/cfg" >"$WORK/qml.log" 2>&1
@@ -52,6 +53,6 @@ while read -r line; do
     *) fail "$entry: no status in '$line'" ;;
   esac
 done < <(grep 'COMPONENT vetro' "$WORK/qml.log" | sed 's/\x1b\[[0-9;]*m//g')
-is "all thirteen entry points were looked at" 13 "$(grep -c 'COMPONENT vetro' "$WORK/qml.log")"
+is "all fourteen entry points were looked at" 14 "$(grep -c 'COMPONENT vetro' "$WORK/qml.log")"
 
 finish

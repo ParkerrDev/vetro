@@ -15,7 +15,7 @@ jobs:
     steps:
       - name: Tools
         run: |
-          pacman -Syu --noconfirm --needed git base-devel shellcheck lua jq python rust cargo-deny glslang qt6-declarative
+          pacman -Syu --noconfirm --needed git base-devel shellcheck lua jq python rust cargo-deny glslang qt6-declarative gtk4 libadwaita
           useradd -m checker
       - uses: actions/checkout@v4
         with:
@@ -29,3 +29,5 @@ jobs:
         run: su checker -c 'VETRO_TEST_ENGINE=1 scripts/check-repo'
       - name: Engine (format, clippy, docs, dependency policy)
         run: su checker -c 'make -C engine check'
+      - name: Glass tuner (build and saved looks)
+        run: su checker -c 'make -C apps/glass all test'
