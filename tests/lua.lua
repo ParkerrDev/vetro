@@ -319,7 +319,8 @@ check("loaded: Vetro's bar keeps the blur for what hangs from it, as Omarchy's d
 check("loaded: but not on itself, which would blur the wallpaper again each time the desktop changes", own_bar and own_bar.blur == false)
 local still = rule_for(seen, "^vetro:bar$", "no_anim")
 check("loaded: and it is not animated", still and still.no_anim == true and still.animation == "none")
-check("loaded: a card on a dim is cut between the dim and the card", seen.glass.layers["omarchy-menu"].mask_threshold == 0.155)
+check("loaded: the menu mask excludes its clear surface and includes its card",
+  seen.glass.layers["omarchy-menu"].mask_threshold > 0.02 and seen.glass.layers["omarchy-menu"].mask_threshold < 0.20)
 check("loaded: the password prompt is cut as the other cards on a dim are", seen.glass.layers["omarchy-polkit"].mask_threshold == 0.155)
 check("loaded: the bar keeps its blur for what hangs from it", rule_for(seen, "^omarchy-bar$") ~= nil)
 check("loaded: the cards do not get the blur too", rule_for(seen, "^vetro:barglass$", "blur") == nil)

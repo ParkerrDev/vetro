@@ -1,23 +1,20 @@
 import QtQuick
 import QtQuick.Effects
-import Quickshell
-import Quickshell.Io
-import "../vetro.lib"
+import qs.Commons
+import qs.Commons as Commons
+import qs.Ui
+import "../vetro.lib" as Vetro
 
-// Vetro's lock screen on Omarchy's lock: the wallpaper, sharp, under a clock of
-// clear glass; your picture in a ring of glass and your name; a capsule of
-// glass for the password; and the next launch, when the launch addon has one.
-// The glass is the shell's own (vetro.lib/Glass.qml): the glass engine never
-// sees a lock surface. Everything is round and moves like a bubble, every
-// length times motion.scale in the settings. Service.qml is Omarchy's own,
-// unchanged; this view keeps the interface of its LockView.
+// Keep Omarchy's lock layout and input behavior; only the field is glass.
+
 Item {
   id: root
 
-  // The interface Service.qml drives, as Omarchy's LockView has it.
   property string backgroundPath: ""
+  property string videoPosterPath: ""
   property int backgroundVersion: 0
   property bool fingerprintConfigured: false
+  property bool fingerprintUnavailable: false
   property bool authenticatingPassword: false
   property string failureMessage: ""
   property int failedAttempts: 0
@@ -26,412 +23,166 @@ Item {
   property string passwordText: ""
   property bool syncingPasswordText: false
 
+  readonly property string placeholderText: Commons.I18n.t("lock.enterPassword")
+  readonly property int fieldWidth: 381
+  readonly property int fieldHeight: 67
+  readonly property int outlineThickness: 3
+  readonly property int fieldFontSize: Math.round(Style.font.heading * 1.125)
+  readonly property int passwordDotFontSize: Math.round(Style.font.heading * 1.33)
+  readonly property int passwordDotLetterSpacing: Math.round(Style.font.heading * 0.19)
+  // Space to keep clear on each side of the field for the fingerprint icon
+  // (icon width plus a gap) so the centered dots never run under it.
+  readonly property real fingerprintReserve: fingerprintConfigured ? Math.round(fingerprintIcon.implicitWidth + 12) : 0
+  // Shrink the dots to fit once the password outgrows the field, so every
+  // keystroke stays visible, otherwise long passwords clip with no feedback.
+  readonly property real passwordDotScale: dotMetrics.advanceWidth > 0
+    ? Math.min(1, (passwordInput.width - 4) / dotMetrics.advanceWidth)
+    : 1
+  readonly property bool showPasswordCursor: inputEnabled && !authenticatingPassword && failureMessage.length === 0
+  readonly property bool errorState: failureMessage.length > 0
+  readonly property var inputBorderSpec: errorState
+    ? Border.surfaceSpec("lock", "border-error", Commons.Color.lock.borderError, root.outlineThickness, "border-alpha")
+    : Border.surfaceSpec("lock", "border-active", Commons.Color.lock.borderActive, root.outlineThickness, "border-alpha")
+
+  // A video wallpaper shows its still poster: nothing plays behind the lock.
+  readonly property bool video: Util.isVideoPath(root.backgroundPath)
+
   signal submitPassword(string password)
   signal passwordTextEdited(string password)
   signal clearFailureRequested()
   signal wakeRequested()
 
-  readonly property string home: Quickshell.env("HOME")
-  readonly property bool errorState: failureMessage.length > 0
-  readonly property string rounded: "Nunito"
-
   function forcePasswordFocus() {
-    passwordInput.forceActiveFocus();
+    passwordInput.forceActiveFocus()
   }
 
   function clearPassword() {
-    passwordTextEdited("");
+    passwordTextEdited("")
+  }
+
+  // Waking a DPMS-blanked display can stall the compositor for seconds while
+  // the monitor modesets, so the wake key's release arrives late and client-side
+  // key repeat floods the field with that character. A held key has no business
+  // typing a password; only holding Backspace/Delete to clear stays useful.
+  function dropsAutoRepeat(key) {
+    return key !== Qt.Key_Backspace && key !== Qt.Key_Delete
   }
 
   function syncPasswordText() {
-    if (passwordInput.text === passwordText)
-      return;
-    syncingPasswordText = true;
-    passwordInput.text = passwordText;
-    syncingPasswordText = false;
+    if (passwordInput.text === passwordText) return
+    syncingPasswordText = true
+    passwordInput.text = passwordText
+    syncingPasswordText = false
   }
 
-  function send() {
-    const submitted = passwordText;
-    passwordTextEdited("");
-    if (submitted.length > 0)
-      submitPassword(submitted);
-  }
-
-  // As Omarchy's lock does it: a query string makes Image load the background
-  // again when another is picked while locked.
-  function fileUrl(path) {
-    if (!path)
-      return "";
-    return "file://" + String(path).split("/").map(encodeURIComponent).join("/") + "?v=" + backgroundVersion;
+  // The field loses focus while a password is checked (it is disabled then),
+  // and forcing focus onto it would not stick until the check ends.
+  function restorePasswordFocus() {
+    if (inputEnabled && passwordInput.enabled && !passwordInput.activeFocus) forcePasswordFocus()
   }
 
   onPasswordTextChanged: syncPasswordText()
   onInputEnabledChanged: {
-    if (inputEnabled)
-      Qt.callLater(forcePasswordFocus);
+    if (inputEnabled) Qt.callLater(forcePasswordFocus)
   }
+
+  // A VT switch, which the NVIDIA driver forces around every suspend, takes the
+  // keyboard away and Qt drops the field's focus with it. Nothing gives it back
+  // when the keyboard returns, so typing went nowhere until the field was clicked.
+  Window.onActiveFocusItemChanged: Qt.callLater(restorePasswordFocus)
   Component.onCompleted: {
-    syncPasswordText();
-    if (inputEnabled)
-      Qt.callLater(forcePasswordFocus);
-    shown = true;
+    syncPasswordText()
+    if (inputEnabled) Qt.callLater(forcePasswordFocus)
   }
 
-  // Everything comes in once the view is up, on a spring.
-  property bool shown: false
-
-  // ------------------------------------------------------------ what it shows
-
-  property var now: new Date()
-  Timer {
-    interval: 1000
-    repeat: true
-    running: root.loadBackground
-    triggeredOnStart: true
-    onTriggered: root.now = new Date()
+  // Measures the masked password at full size; passwordDotScale compares this
+  // against the field width to decide how far the dots must shrink to fit.
+  TextMetrics {
+    id: dotMetrics
+    font.family: Style.font.family
+    font.pixelSize: root.passwordDotFontSize
+    font.letterSpacing: root.passwordDotLetterSpacing
+    text: "●".repeat(passwordInput.text.length)
   }
 
-  // With the launch addon on, the desktop plays a launch: its still is what
-  // was on the screen. Without it, the wallpaper.
-  property string poster: ""
-  FileView {
-    path: root.home + "/.local/share/vetro/clips/current.json"
-    printErrors: false
-    watchChanges: true
-    onFileChanged: reload()
-    onLoaded: {
-      try {
-        root.poster = JSON.parse(text()).poster || "";
-      } catch (e) {
-        root.poster = "";
-      }
-    }
-    onLoadFailed: root.poster = ""
-  }
-
-  // Your name from the passwd entry.
-  property string fullName: ""
-  Process {
-    running: true
-    command: ["getent", "passwd", Quickshell.env("USER") || ""]
-    stdout: StdioCollector {
-      onStreamFinished: root.fullName = (this.text.split(":")[4] || "").split(",")[0].trim()
-    }
-  }
-
-  // The next launch, from the launch addon's cache.
-  property var upcoming: []
-  FileView {
-    path: root.home + "/.cache/vetro/launches.json"
-    printErrors: false
-    watchChanges: true
-    onFileChanged: reload()
-    onLoaded: {
-      try {
-        root.upcoming = JSON.parse(text()).upcoming || [];
-      } catch (e) {
-        root.upcoming = [];
-      }
-    }
-  }
-  readonly property string nextLaunch: {
-    const t = now.getTime() / 1000;
-    const two = n => String(n).padStart(2, "0");
-    for (const l of upcoming) {
-      const net = l.net_epoch;
-      if (!net || t - net > 20 * 60)
-        continue;
-      let when;
-      if (["SEC", "MIN", ""].includes(l.net_precision || "")) {
-        let left = Math.floor(Math.abs(net - t));
-        const days = Math.floor(left / 86400);
-        left %= 86400;
-        const clock = two(Math.floor(left / 3600)) + ":" + two(Math.floor(left % 3600 / 60));
-        when = (net > t ? "T− " : "T+ ") + (days ? days + "d " : "") + clock;
-      } else {
-        when = Qt.formatDate(new Date(net * 1000), "MMM d");
-      }
-      return (l.title || "") + "  ·  " + when;
-    }
-    return "";
-  }
-
-  // ------------------------------------------------------------- the glass
-
-  // What the glass lies over and reads: the picture, sharp, a little darker
-  // at the top and the bottom where the type is.
-  Item {
-    id: backdrop
+  Rectangle {
     anchors.fill: parent
-    layer.enabled: true
+    color: Commons.Color.background
 
-    Rectangle {
+    Item {
+      id: lockBackdrop
       anchors.fill: parent
-      color: "#000000"
-    }
-
-    Image {
-      id: picture
-      anchors.fill: parent
-      source: root.loadBackground ? root.fileUrl(root.poster || root.backgroundPath) : ""
-      fillMode: Image.PreserveAspectCrop
-      asynchronous: true
-      cache: false
-      sourceSize.width: width
-      sourceSize.height: height
-      opacity: status === Image.Ready ? 1 : 0
-      Behavior on opacity {
-        Fade {}
-      }
-    }
-
-    Rectangle {
-      anchors.fill: parent
-      gradient: Gradient {
-        GradientStop { position: 0; color: Qt.rgba(0, 0, 0, 0.26) }
-        GradientStop { position: 0.4; color: Qt.rgba(0, 0, 0, 0.04) }
-        GradientStop { position: 0.7; color: Qt.rgba(0, 0, 0, 0.04) }
-        GradientStop { position: 1; color: Qt.rgba(0, 0, 0, 0.3) }
-      }
-    }
-  }
-
-  // The same, frosted, for the glass's frost.
-  MultiEffect {
-    id: frosted
-    anchors.fill: backdrop
-    source: backdrop
-    visible: false
-    layer.enabled: true
-    autoPaddingEnabled: false
-    blurEnabled: true
-    blur: 1
-    blurMax: 48
-    saturation: 0.15
-  }
-
-  MouseArea {
-    anchors.fill: parent
-    hoverEnabled: true
-    cursorShape: Qt.BlankCursor
-    onClicked: {
-      root.wakeRequested();
-      root.forcePasswordFocus();
-    }
-    onPositionChanged: root.wakeRequested()
-  }
-
-  // ----------------------------------------------------------- the clock
-
-  readonly property real head: Math.round(height * 0.06)
-
-  // The date, small and white, over the clock.
-  Text {
-    id: date
-    anchors.horizontalCenter: parent.horizontalCenter
-    y: root.head + (root.shown ? 0 : -24)
-    opacity: root.shown ? 1 : 0
-    text: Qt.formatDate(root.now, "dddd, MMMM d")
-    color: Qt.rgba(1, 1, 1, 0.92)
-    font.family: root.rounded
-    font.weight: Font.Bold
-    font.pixelSize: Math.max(16, Math.round(root.height * 0.024))
-    Behavior on y { Spring {} }
-    Behavior on opacity { Fade {} }
-    layer.enabled: true
-    layer.effect: Lift {}
-  }
-
-  // The clock: big round numerals of clear glass.
-  Glass {
-    id: clock
-    backdrop: backdrop
-    blurred: frosted
-    outline: digits
-    anchors.horizontalCenter: parent.horizontalCenter
-    y: root.head + date.implicitHeight - pad * 0.6 + (root.shown ? 0 : -40)
-    width: digits.implicitWidth + 2 * pad
-    height: digits.implicitHeight + 2 * pad
-    scale: root.shown ? 1 : 0.9
-    opacity: root.shown ? 1 : 0
-    Behavior on y { Spring {} }
-    Behavior on scale { Spring {} }
-    Behavior on opacity { Fade {} }
-
-    readonly property real pad: Math.round(digits.font.pixelSize * 0.12)
-    bezel: Math.round(digits.font.pixelSize * 0.09)
-    refraction: Math.round(digits.font.pixelSize * 0.14)
-    frost: 0.2
-    tintAmount: 0.14
-    glare: 1
-    hairline: 0.8
-    shadow: 0.28
-
-    Text {
-      id: digits
-      anchors.fill: parent
-      visible: false
       layer.enabled: true
-      horizontalAlignment: Text.AlignHCenter
-      verticalAlignment: Text.AlignVCenter
-      text: Qt.formatTime(root.now, Settings.twelveHour ? "h:mm" : "HH:mm")
-      color: "#ffffff"
-      font.family: root.rounded
-      font.weight: Font.Black
-      font.pixelSize: Math.round(Math.min(root.height * 0.22, root.width * 0.17))
-      font.features: { "tnum": 1 }
-    }
-  }
 
-  // ------------------------------------------------------------- you
-
-  // You and the password sit low, as on a Mac, with the picture open between.
-  readonly property real low: Math.round(height * 0.76)
-
-  Item {
-    id: you
-    anchors.horizontalCenter: parent.horizontalCenter
-    y: root.low - height + (root.shown ? 0 : 36)
-    width: 300
-    height: ring.height + 10 + name.implicitHeight
-    opacity: root.shown ? 1 : 0
-    Behavior on y { Spring {} }
-    Behavior on opacity { Fade {} }
-
-    // Your picture in a ring of glass, or a figure without one.
-    Glass {
-      id: ring
-      backdrop: backdrop
-      blurred: frosted
-      anchors.horizontalCenter: parent.horizontalCenter
-      width: 116
-      height: 116
-      margin: 8
-      bezel: 9
-      refraction: 11
-      frost: 0.3
-      tintAmount: 0.16
-
-      Image {
-        id: face
-        anchors.centerIn: parent
-        width: 86
-        height: 86
-        visible: false
-        source: "file://" + root.home + "/avatar.jpg"
-        fillMode: Image.PreserveAspectCrop
-        sourceSize.width: 172
-        sourceSize.height: 172
-        cache: false
-      }
-
-      Rectangle {
-        id: round
-        anchors.fill: face
-        radius: width / 2
-        visible: false
+      BackgroundMedia {
+        id: wallpaper
         layer.enabled: true
+        objectName: "lockWallpaper"
+        anchors.fill: parent
+        path: root.loadBackground ? (root.video ? root.videoPosterPath : root.backgroundPath) : ""
+        version: root.backgroundVersion
+        // Decode only once sized, at the lock's own size: an unsized first
+        // request decoded the file at its native resolution, then again once
+        // sized. That size is what the lock service keeps decoded ahead of the
+        // lock, so the first frame has the wallpaper.
+        cached: true
+        constrainDecode: true
+        decodeSize: Qt.size(width, height)
       }
 
       MultiEffect {
-        anchors.fill: face
-        visible: face.status === Image.Ready
-        source: face
-        maskEnabled: true
-        maskSource: round
+        anchors.fill: wallpaper
+        source: wallpaper
+        autoPaddingEnabled: false
+        blurEnabled: root.loadBackground && wallpaper.ready
+        blur: 1.0
+        blurMax: 128
+        blurMultiplier: 1.25
+        contrast: -0.08
       }
 
-      Text {
-        anchors.centerIn: parent
-        visible: face.status !== Image.Ready
-        text: "person"
-        color: Qt.rgba(1, 1, 1, 0.9)
-        font.family: Look.iconFamily
-        font.pixelSize: 52
-      }
     }
 
-    Text {
-      id: name
-      anchors.horizontalCenter: parent.horizontalCenter
-      anchors.bottom: parent.bottom
-      text: root.fullName || Quickshell.env("USER") || ""
-      color: "#ffffff"
-      font.family: root.rounded
-      font.weight: Font.Bold
-      font.pixelSize: 20
-      layer.enabled: true
-      layer.effect: Lift {}
-    }
-  }
-
-  // ------------------------------------------------------ the password
-
-  Glass {
-    id: field
-    backdrop: backdrop
-    blurred: frosted
-    anchors.horizontalCenter: parent.horizontalCenter
-    anchors.horizontalCenterOffset: shake
-    y: root.low + 22 + (root.shown ? 0 : 48)
-    width: 300 + 2 * margin
-    height: 54 + 2 * margin
-    margin: 10
-    bezel: 14
-    refraction: 16
-    frost: 0.35
-    tint: root.errorState ? "#ffd2d2" : "#ffffff"
-    tintAmount: root.errorState ? 0.2 : 0.12
-    shadow: 0.22
-    moved: swell
-    opacity: root.shown ? 1 : 0
-    Behavior on y { Spring {} }
-    Behavior on opacity { Fade {} }
-    Behavior on tintAmount { Fade {} }
-
-    // A key pressed swells it a little, as a touched bubble does; a password
-    // that was not taken shakes it, the way jelly does.
-    property real shake: 0
-    property real swell: 0
-    transform: Scale {
-      origin.x: field.width / 2
-      origin.y: field.height / 2
-      xScale: 1 + field.swell
-      yScale: 1 - field.swell * 0.6
-    }
-    SequentialAnimation {
-      id: press
-      NumberAnimation { target: field; property: "swell"; to: 0.018; duration: Look.ms(60); easing.type: Easing.OutQuad }
-      NumberAnimation { target: field; property: "swell"; to: 0; duration: Look.ms(460); easing.type: Easing.OutElastic; easing.amplitude: 1.2; easing.period: 0.35 }
-    }
-    SequentialAnimation {
-      id: refusal
-      NumberAnimation { target: field; property: "shake"; to: -14; duration: Look.ms(70); easing.type: Easing.OutQuad }
-      NumberAnimation { target: field; property: "shake"; to: 0; duration: Look.ms(760); easing.type: Easing.OutElastic; easing.amplitude: 1.6; easing.period: 0.22 }
-    }
-    Connections {
-      target: root
-      function onErrorStateChanged() {
-        if (root.errorState)
-          refusal.restart();
-      }
-    }
-
-    // No pointer anywhere (the text field would show a text cursor).
-    HoverHandler {
-      cursorShape: Qt.BlankCursor
-    }
-
-    Item {
+    MouseArea {
       anchors.fill: parent
-      anchors.margins: field.margin
+      hoverEnabled: true
+      onClicked: { root.wakeRequested(); root.forcePasswordFocus() }
+      onPositionChanged: root.wakeRequested()
+    }
+
+    BorderSurface {
+      id: inputField
+      width: root.fieldWidth
+      height: root.fieldHeight
+      anchors.centerIn: parent
+      color: "transparent"
+      borderSpec: root.errorState ? root.inputBorderSpec : Border.none()
+      radius: Style.cornerRadius
+      clip: true
+
+      Vetro.Glass {
+        anchors.fill: parent
+        z: -1
+        backdrop: wallpaper
+        blurred: lockBackdrop
+        radius: inputField.radius
+        bezel: 10
+        refraction: 14
+        tint: Commons.Color.lock.background
+        tintAmount: 0.35
+        frost: 0.75
+        saturation: 1.15
+      }
 
       TextInput {
         id: passwordInput
         anchors.fill: parent
-        anchors.leftMargin: 22 + 40
-        anchors.rightMargin: 22 + 40
+        anchors.topMargin: inputField.borderTop
+        // Reserve the fingerprint icon's width on both sides so the centered
+        // dots stay symmetric and never slide under the icon as they grow.
+        anchors.rightMargin: inputField.borderRight + 18 + root.fingerprintReserve
+        anchors.bottomMargin: inputField.borderBottom
+        anchors.leftMargin: inputField.borderLeft + 18 + root.fingerprintReserve
         verticalAlignment: TextInput.AlignVCenter
         horizontalAlignment: TextInput.AlignHCenter
         activeFocusOnPress: true
@@ -439,250 +190,100 @@ Item {
         enabled: root.inputEnabled && !root.authenticatingPassword
         readOnly: root.authenticatingPassword
         echoMode: TextInput.Password
-        passwordCharacter: "●"
+        passwordCharacter: "\u25CF"
         passwordMaskDelay: 0
-        // The field takes the keys and shows nothing of its own: the dots are
-        // drawn over it, below, where each one can arrive and leave.
-        color: "transparent"
-        selectionColor: "transparent"
-        selectedTextColor: "transparent"
-        font.pixelSize: 12
-        cursorDelegate: Item {}
+        color: Commons.Color.lock.text
+        selectionColor: Commons.Color.lock.selection
+        selectedTextColor: Commons.Color.lock.text
+        font.family: Style.font.family
+        font.pixelSize: text.length > 0 ? Math.max(1, Math.floor(root.passwordDotFontSize * root.passwordDotScale)) : root.fieldFontSize
+        font.letterSpacing: text.length > 0 ? root.passwordDotLetterSpacing * root.passwordDotScale : 0
+        cursorVisible: activeFocus && root.showPasswordCursor && text.length > 0
+        cursorDelegate: Rectangle {
+          width: 2
+          color: Commons.Color.lock.text
+          visible: passwordInput.cursorVisible
+        }
 
         onTextChanged: {
-          typed.follow(text.length);
-          if (!root.syncingPasswordText)
-            root.passwordTextEdited(text);
-          if (text.length > 0)
-            root.wakeRequested();
-          if (text.length > 0 && root.failureMessage.length > 0)
-            root.clearFailureRequested();
+          if (!root.syncingPasswordText) root.passwordTextEdited(text)
+          if (text.length > 0) {
+            root.wakeRequested()
+          }
+          if (text.length > 0 && root.failureMessage.length > 0) root.clearFailureRequested()
         }
 
-        onAccepted: root.send()
+        onAccepted: {
+          var submitted = root.passwordText
+          root.passwordTextEdited("")
+          if (submitted.length > 0) root.submitPassword(submitted)
+        }
 
-        Keys.onPressed: function (event) {
-          root.wakeRequested();
+        Keys.onPressed: function(event) {
+          root.wakeRequested()
+          if (event.isAutoRepeat && root.dropsAutoRepeat(event.key)) {
+            event.accepted = true
+            return
+          }
           if (event.key === Qt.Key_Escape || (event.modifiers & Qt.ControlModifier && event.key === Qt.Key_U)) {
-            root.passwordTextEdited("");
-            event.accepted = true;
-            return;
-          }
-          if (event.text.length > 0 || event.key === Qt.Key_Backspace)
-            press.restart();
-        }
-      }
-
-      // What has been typed, a dot for each key. A dot pops into its place
-      // as its key is pressed and shrinks away when it is taken back, and the
-      // row stays centred by gliding. How many there are is all that is kept:
-      // nothing here knows what was typed.
-      ListModel {
-        id: typed
-
-        // The most dots drawn. A longer password goes on being typed, and the
-        // row shows its end.
-        readonly property int most: 64
-
-        function follow(length) {
-          const wanted = Math.min(length, most);
-          for (let i = 0; i < most && typed.count < wanted; i++)
-            typed.append({});
-          for (let i = 0; i < most && typed.count > wanted; i++)
-            typed.remove(typed.count - 1);
-        }
-      }
-
-      ListView {
-        id: dots
-        anchors.centerIn: passwordInput
-        width: Math.min(contentWidth, passwordInput.width)
-        height: parent.height
-        orientation: ListView.Horizontal
-        interactive: false
-        clip: true
-        spacing: 8
-        model: typed
-        onCountChanged: positionViewAtEnd()
-
-        Behavior on width {
-          Fade {}
-        }
-
-        delegate: Item {
-          width: 11
-          height: dots.height
-
-          Rectangle {
-            anchors.centerIn: parent
-            width: 11
-            height: 11
-            radius: 5.5
-            color: "#ffffff"
+            root.passwordTextEdited("")
+            event.accepted = true
           }
         }
-
-        add: Transition {
-          NumberAnimation { property: "scale"; from: 0; to: 1; duration: Look.ms(340); easing.type: Easing.OutBack; easing.overshoot: 6 * Settings.bounce }
-          NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Look.ms(120) }
-        }
-        remove: Transition {
-          NumberAnimation { property: "scale"; to: 0; duration: Look.ms(160); easing.type: Easing.InBack }
-          NumberAnimation { property: "opacity"; to: 0; duration: Look.ms(160) }
-        }
-        displaced: Transition {
-          NumberAnimation { properties: "x"; duration: Look.moderate; easing.type: Easing.BezierSpline; easing.bezierCurve: Look.spring }
-        }
       }
 
-      // Enter Password, then Checking, or why it failed.
       Text {
-        anchors.fill: parent
-        anchors.leftMargin: 22
-        anchors.rightMargin: 22
+        textFormat: Text.PlainText
+        anchors.fill: passwordInput
+        text: root.authenticatingPassword ? Commons.I18n.t("lock.checking") : (root.failureMessage.length > 0 ? root.failureMessage : root.placeholderText)
         visible: passwordInput.text.length === 0
-
-        // While the password is being checked the word breathes.
-        SequentialAnimation on opacity {
-          running: root.authenticatingPassword && Look.moving
-          loops: Animation.Infinite
-          alwaysRunToEnd: true
-          NumberAnimation { to: 0.35; duration: Look.ms(560); easing.type: Easing.InOutSine }
-          NumberAnimation { to: 1; duration: Look.ms(560); easing.type: Easing.InOutSine }
-        }
-        text: root.authenticatingPassword ? "Checking" : (root.errorState ? root.failureMessage : "Enter Password")
-        color: Qt.rgba(1, 1, 1, root.errorState || root.authenticatingPassword ? 0.97 : 0.82)
-        font.family: root.rounded
-        font.weight: Font.DemiBold
-        font.pixelSize: 16
+        color: root.authenticatingPassword ? Commons.Color.lock.text : (root.failureMessage.length > 0 ? Commons.Color.lock.textError : Commons.Color.lock.placeholder)
+        font.family: Style.font.family
+        font.pixelSize: root.fieldFontSize
+        font.italic: !root.authenticatingPassword && root.failureMessage.length > 0
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
         elide: Text.ElideRight
-        layer.enabled: true
-        layer.effect: Lift {}
       }
 
-      // The way in: a round button of glass that grows in once there is
-      // something to send, and a finger to touch while there is not.
-      Item {
-        id: go
+      // Fingerprint hint pinned inside the field's right edge when a sensor is
+      // enrolled, so the user knows they can touch to unlock instead of typing.
+      // Matches hyprlock, which draws its fingerprint icon in the same spot.
+      // A reader the shell cannot reach crosses out rather than disappears, so
+      // it stops inviting touches that can never unlock.
+      Text {
+        id: fingerprintIcon
+        objectName: "fingerprintIndicator"
+        textFormat: Text.PlainText
         anchors.right: parent.right
-        anchors.rightMargin: 8
+        anchors.rightMargin: inputField.borderRight + 18
         anchors.verticalCenter: parent.verticalCenter
-        width: 38
-        height: 38
-
-        readonly property bool ready: passwordInput.text.length > 0 && !root.authenticatingPassword
-
-        Rectangle {
-          anchors.fill: parent
-          radius: width / 2
-          color: Qt.rgba(1, 1, 1, tap.pressed ? 0.42 : (hover.hovered ? 0.32 : 0.24))
-          border.width: 1
-          border.color: Qt.rgba(1, 1, 1, 0.45)
-          scale: go.ready ? (tap.pressed ? 0.9 : 1) : 0
-          opacity: go.ready ? 1 : 0
-          Behavior on scale { Spring {} }
-          Behavior on opacity { Fade {} }
-          Behavior on color { ColorAnimation { duration: Look.quick } }
-
-          Text {
-            anchors.centerIn: parent
-            text: "arrow_forward"
-            color: "#ffffff"
-            font.family: Look.iconFamily
-            font.pixelSize: 22
-          }
-
-          HoverHandler {
-            id: hover
-          }
-          TapHandler {
-            id: tap
-            enabled: go.ready
-            gesturePolicy: TapHandler.ReleaseWithinBounds
-            onTapped: root.send()
-          }
-        }
-
-        Text {
-          anchors.centerIn: parent
-          visible: root.fingerprintConfigured
-          opacity: go.ready ? 0 : 0.7
-          scale: go.ready ? 0.6 : 1
-          Behavior on opacity { Fade {} }
-          Behavior on scale { Spring {} }
-          text: "fingerprint"
-          color: "#ffffff"
-          font.family: Look.iconFamily
-          font.pixelSize: 24
-        }
+        visible: root.fingerprintConfigured
+        text: root.fingerprintUnavailable ? "󰺱" : "󰈷"
+        color: root.fingerprintUnavailable ? Commons.Color.lock.textError : Commons.Color.lock.placeholder
+        font.family: Style.font.family
+        font.pixelSize: Math.round(root.fieldFontSize * 1.1)
+        horizontalAlignment: Text.AlignHCenter
+        verticalAlignment: Text.AlignVCenter
       }
     }
-  }
 
-  // --------------------------------------------------------- the launch
-
-  Glass {
-    id: launch
-    backdrop: backdrop
-    blurred: frosted
-    visible: root.nextLaunch.length > 0
-    anchors.horizontalCenter: parent.horizontalCenter
-    y: root.height - height - 36 + (root.shown ? 0 : 40)
-    width: row.implicitWidth + 2 * 18 + 2 * margin
-    height: 40 + 2 * margin
-    margin: 8
-    bezel: 10
-    refraction: 12
-    frost: 0.4
-    tintAmount: 0.1
-    shadow: 0.18
-    opacity: root.shown ? 1 : 0
-    Behavior on y { Spring {} }
-    Behavior on opacity { Fade {} }
-
-    Row {
-      id: row
-      anchors.centerIn: parent
-      spacing: 8
-
-      Text {
-        anchors.verticalCenter: parent.verticalCenter
-        text: "rocket_launch"
-        color: "#ffffff"
-        font.family: Look.iconFamily
-        font.pixelSize: 18
-      }
-      Text {
-        anchors.verticalCenter: parent.verticalCenter
-        text: root.nextLaunch
-        color: "#ffffff"
-        font.family: root.rounded
-        font.weight: Font.Bold
-        font.pixelSize: 14
-        font.features: { "tnum": 1 }
-      }
+    // The crossed-out icon has no meaning to a user who has never seen it, it
+    // is not intuitive that it signals a broken reader, so the words carry the
+    // explanation and the icon only reinforces it.
+    Text {
+      objectName: "fingerprintUnavailableNotice"
+      textFormat: Text.PlainText
+      anchors.top: inputField.bottom
+      anchors.topMargin: 18
+      anchors.horizontalCenter: inputField.horizontalCenter
+      visible: root.fingerprintConfigured && root.fingerprintUnavailable
+      text: Commons.I18n.t("lock.fingerprintUnavailable")
+      color: Commons.Color.lock.textError
+      font.family: Style.font.family
+      font.pixelSize: Style.font.heading
+      font.italic: true
+      horizontalAlignment: Text.AlignHCenter
     }
-  }
-
-  // How things move here: on a spring that goes a little past and comes
-  // back, or by a soft fade. And the shadow that keeps white type legible on
-  // a light picture.
-  component Spring: NumberAnimation {
-    duration: Look.slow
-    easing.type: Easing.BezierSpline
-    easing.bezierCurve: Look.spring
-  }
-  component Fade: NumberAnimation {
-    duration: Look.moderate
-    easing.type: Easing.BezierSpline
-    easing.bezierCurve: Look.settle
-  }
-  component Lift: MultiEffect {
-    shadowEnabled: true
-    shadowColor: Qt.rgba(0, 0, 0, 0.35)
-    shadowBlur: 0.5
-    shadowVerticalOffset: 1
   }
 }

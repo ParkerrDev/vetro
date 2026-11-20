@@ -35,7 +35,7 @@ curl -fsSL https://raw.githubusercontent.com/ParkerrDev/vetro/master/install.sh 
 | **Panels** | The calendar and the other panels the bar opens. |
 | **Notifications** | Glass toasts, a notification centre and its bell, served by Vetro's own notification daemon. |
 | **Volume** | The on-screen display. |
-| **Lock screen** | Rounder, and glass over your wallpaper. |
+| **Lock screen** | Omarchy's default blurred wallpaper and centered password field, with liquid glass on the input. |
 | **Windows** | See-through windows (the terminal, for one) are glass too. Windows under glass show through it; the desktop's widgets never do. |
 | **Motion** | One pace for windows, panels, menus and workspaces, and a genie, jelly and wobble to switch on in Vetro Glass. |
 | **Vetro Glass** | An app to tune all of it by hand, with presets. |
