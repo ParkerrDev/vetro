@@ -30,20 +30,15 @@ Item {
   // At the two ends of the bar.
   readonly property real endGap: Settings.sideGap
 
-  function undoSeeThrough() {
-    if (seeThrough)
-      Quickshell.execDetached(["omarchy-bar", "transparent", "false"]);
-  }
-  onSeeThroughChanged: undoSeeThrough()
-  Component.onCompleted: undoSeeThrough()
-
   Rectangle {
+    antialiasing: true
     anchors.fill: parent
     anchors.topMargin: pane.vertical ? pane.endGap : pane.edgeGap
     anchors.bottomMargin: pane.vertical ? pane.endGap : pane.edgeGap
     anchors.leftMargin: pane.vertical ? pane.edgeGap : pane.endGap
     anchors.rightMargin: pane.vertical ? pane.edgeGap : pane.endGap
     radius: Math.min(Settings.barRadius, width / 2, height / 2)
+    visible: !pane.seeThrough
     color: Look.film
     border.width: Look.frameWidth
     border.color: Look.frame

@@ -214,7 +214,7 @@ rm -r "$H/.config/omarchy/plugins/local.neon-bar"
 
 # --- an Omarchy whose bar Vetro's builder does not know: Omarchy's own bar stays
 mkdir -p "$WORK/newer-bar"
-sed 's/if (dragging) return/if (dragging) { return }/' "$REPO/tests/fixtures/bar/Bar.qml" >"$WORK/newer-bar/Bar.qml"
+sed 's/omarchy-bar/omarchy-bar-v2/' "$REPO/tests/fixtures/bar/Bar.qml" >"$WORK/newer-bar/Bar.qml"
 cp "$REPO/tests/fixtures/bar/BarModel.js" "$WORK/newer-bar/"
 BAR_SOURCE=$WORK/newer-bar
 run vetro on >"$WORK/on-newer.out" 2>&1 || fail "vetro on failed over a bar it does not know"

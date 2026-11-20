@@ -2,16 +2,8 @@
 """Build Vetro's bar from the Omarchy bar that is installed.
 
 Vetro's bar is Omarchy's own, every widget, panel and gesture of it, with
-three things changed:
-
-  the glass   the pane of glass is drawn by the bar's own surface, which is
-              above windows, and not by a strip of its own under them. A
-              window that slides past the bar goes under the glass too.
-  no drags    nothing on the bar is moved by dragging it, and the bar is not
-              dragged to another edge. Where things are is what shell.json
-              says (`omarchy bar move`, `omarchy bar position`).
-  no toggle   a double click on the bar does not make it see-through: the
-              glass is its background.
+one visual change: a rounded glass pane replaces the background. Layout,
+widget dragging, edge dragging and transparency remain Omarchy's own.
 
 It is built here, and not kept as a copy in the repository, so that it is
 always the bar of the Omarchy that is installed: an update to Omarchy's bar is
@@ -38,48 +30,14 @@ import sys
 # in Omarchy's Bar.qml exactly once.
 CHANGES = [
     (
-        "the switch for the gestures Vetro's bar does without",
-        "Item {\n  id: root\n",
-        "Item {\n  id: root\n\n"
-        "  // Vetro: the bar and what is on it stay where shell.json puts them, and the\n"
-        "  // bar keeps its glass. No drag moves a widget or the bar, and no double\n"
-        "  // click makes the bar see-through.\n"
-        "  readonly property bool vetroGestures: false\n",
-    ),
-    (
         "the pane of glass is part of the bar's surface",
         '    WlrLayershell.namespace: "omarchy-bar"\n'
-        "    WlrLayershell.layer: WlrLayer.Top\n"
-        "\n"
-        "    Loader {\n",
+        "    WlrLayershell.layer: WlrLayer.Top\n\n    Loader {\n",
         '    WlrLayershell.namespace: "vetro:bar"\n'
-        "    WlrLayershell.layer: WlrLayer.Top\n"
-        "\n"
-        "    // Vetro: the glass, drawn by this surface and so above windows.\n"
-        "    VetroPane {\n"
-        "      anchors.fill: parent\n"
-        "      vertical: root.vertical\n"
-        "      barSize: root.barSize\n"
-        "      seeThrough: root.transparent\n"
-        "    }\n"
-        "\n"
-        "    Loader {\n",
-    ),
-    (
-        "no widget is moved by dragging it",
-        'readonly property bool canReorder: root.shell && typeof root.shell.mutateShellConfig === "function"\n',
-        "readonly property bool canReorder: root.vetroGestures && root.shell"
-        ' && typeof root.shell.mutateShellConfig === "function"\n',
-    ),
-    (
-        "the bar is not dragged to another edge",
-        "    function startDrag(x, y) {\n      if (dragging) return\n",
-        "    function startDrag(x, y) {\n      if (!root.vetroGestures || dragging) return\n",
-    ),
-    (
-        "a double click does not make the bar see-through",
-        "        root.toggleTransparency()\n",
-        "        if (root.vetroGestures) root.toggleTransparency()\n",
+        "    WlrLayershell.layer: WlrLayer.Top\n\n"
+        "    VetroPane {\n      anchors.fill: parent\n"
+        "      vertical: root.vertical\n      barSize: root.barSize\n"
+        "      seeThrough: root.transparent\n    }\n\n    Loader {\n",
     ),
 ]
 
@@ -108,7 +66,23 @@ def stamp(source):
 
 def changed(text):
     """Omarchy's Bar.qml with Vetro's changes, or the change that has no place."""
-    for what, find, put in CHANGES:
+    changes = CHANGES
+    if "id: barStrip" in text:
+        # Omarchy 4.5 uses a screen-sized surface with a strip inside it.
+        # Put the pane inside that strip, not across the whole surface.
+        changes = [
+            ("bar namespace", 'WlrLayershell.namespace: "omarchy-bar"', 'WlrLayershell.namespace: "vetro:bar"'),
+            ("strip background", '''      Rectangle {
+        anchors.fill: parent
+        color: root.transparent ? "transparent" : (root.glassy ? root.glassBackground : root.background)
+      }''', '''      VetroPane {
+        anchors.fill: parent
+        vertical: root.vertical
+        barSize: barWindow.thickness
+        seeThrough: root.transparent
+      }'''),
+        ]
+    for what, find, put in changes:
         count = text.count(find)
         if count != 1:
             return None, "%s: its place is in Omarchy's Bar.qml %d times, not once" % (what, count)

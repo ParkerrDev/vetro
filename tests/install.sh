@@ -37,7 +37,7 @@ links_ok() {
   has "$when: its glass is in its own surface" "$H/.config/omarchy/plugins/vetro.bar/Bar.qml" 'WlrLayershell.namespace: "vetro:bar"'
   has "$when: with the pane that draws it" "$H/.config/omarchy/plugins/vetro.bar/Bar.qml" "VetroPane {"
   is "$when: the pane is Vetro's own file" "$REPO/shell/bar/VetroPane.qml" "$(readlink "$H/.config/omarchy/plugins/vetro.bar/VetroPane.qml")"
-  has "$when: nothing on it is dragged" "$H/.config/omarchy/plugins/vetro.bar/Bar.qml" "readonly property bool vetroGestures: false"
+  lacks "$when: stock gestures stay enabled" "$H/.config/omarchy/plugins/vetro.bar/Bar.qml" "vetroGestures"
   is "$when: the model beside it is Omarchy's, untouched" "$(md5sum <"$REPO/tests/fixtures/bar/BarModel.js")" \
     "$(md5sum <"$H/.config/omarchy/plugins/vetro.bar/BarModel.js")"
 }
