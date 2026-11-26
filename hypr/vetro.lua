@@ -524,6 +524,12 @@ if o.cmd_present("qt6ct") then
   hl.env("QT_QPA_PLATFORMTHEME", "qt6ct")
 end
 
+-- Qt Quick draws scalable text and icon glyphs with sub-pixel (LCD) smoothing
+-- by default, which leaves a blue edge on the left and a red one on the right
+-- of every white glyph over the glass. Grayscale smoothing keeps the edges
+-- clean, and on a fractionally scaled panel sub-pixel order is lost anyway.
+hl.env("QSG_DISTANCEFIELD_ANTIALIASING", "gray")
+
 --------------------------------------------------------------- autostart ----
 
 hl.on("hyprland.start", function()
