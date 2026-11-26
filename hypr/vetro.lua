@@ -357,6 +357,11 @@ hl.layer_rule({ match = { namespace = "^vetro:center$" }, animation = "slide rig
 -- the engine draw its lens again for every frame of the fade: three times
 -- the work of opening the menu at all (2026-10-22).
 hl.layer_rule({ match = { namespace = "^vetro:backdrop$" }, no_anim = true, animation = "none" })
+-- Omarchy slides its screensaver up from the bottom, on its own special
+-- workspace, and its edges showed against the desktop the whole way. It
+-- fades in where it stands instead (2026-11-26: "I need something classier").
+hl.window_rule({ match = { class = "^org\\.omarchy\\.screensaver$" }, animation = "fade" })
+hl.workspace_rule({ workspace = "n[s:special:screensaver]", animation = "fade" })
 
 -- Fast, snappy and still fluid (2026-10-18: "make everything feel fast,
 -- snappy and yet fluid, so very responsive"): Omarchy's animations about a

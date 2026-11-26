@@ -1217,7 +1217,35 @@ Item {
         maxRowsHeight = root.visibleRowsHeight
       }
     }
-    onVisibleChanged: if (!visible) { cardTop = -1; maxRowsHeight = -1 }
+    onVisibleChanged: {
+      if (visible) {
+        revealIn.restart()
+      } else {
+        revealIn.stop()
+        reveal = 0
+        cardTop = -1
+        maxRowsHeight = -1
+      }
+    }
+
+    // Vetro: the card opens in two beats instead of popping into existence
+    // (2026-11-26: "the content fills before the vetro background does ... I
+    // want something way more classy"). The glass card is there from the
+    // first frame and grows into place from a little smaller, and the rows
+    // fade in once it stands, so they always land on glass. The card's film
+    // stays whole: the engine makes glass only of film past its cut-off, so
+    // fading the film would only make the glass snap in late. Hyprland cannot
+    // animate this surface (Omarchy gives the menu no_anim), so the card does.
+    property real reveal: 0
+    NumberAnimation {
+      id: revealIn
+      target: panel
+      property: "reveal"
+      from: 0
+      to: 1
+      duration: 220
+      easing.type: Easing.OutCubic
+    }
 
     Rectangle {
       anchors.fill: parent
@@ -1236,6 +1264,7 @@ Item {
       radius: root.cornerRadius
       anchors.horizontalCenter: parent.horizontalCenter
       y: panel.effectiveCardTop
+      scale: 0.94 + 0.06 * panel.reveal
       color: root.background
       borderSpec: root.borderSpec
       padding: root.contentMargin
@@ -1315,6 +1344,7 @@ Item {
 
       Column {
         anchors.fill: parent
+        opacity: Math.max(0, (panel.reveal - 0.3) / 0.7)
         anchors.topMargin: card.contentTopInset
         anchors.rightMargin: card.contentRightInset
         anchors.bottomMargin: card.contentBottomInset
