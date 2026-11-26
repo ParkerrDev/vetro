@@ -80,7 +80,7 @@ end
 -- Loading is recorded so that the tests can hold the file to never doing it.
 local function fake(opts)
   local seen = {
-    config = {}, rules = {}, env = {}, hooks = {}, commands = {}, loads = {}, windows = {}, curves = {}, animations = {}, binds = {},
+    config = {}, rules = {}, window_rules = {}, workspace_rules = {}, env = {}, hooks = {}, commands = {}, loads = {}, windows = {}, curves = {}, animations = {}, binds = {},
     glass = { config = {}, layers = {}, presets = {} },
   }
   local glass = {
@@ -102,6 +102,8 @@ local function fake(opts)
     exec_cmd = function(command) seen.commands[#seen.commands + 1] = command end,
     config = function(t) seen.config[#seen.config + 1] = t end,
     layer_rule = function(t) seen.rules[#seen.rules + 1] = t end,
+    window_rule = function(t) seen.window_rules[#seen.window_rules + 1] = t end,
+    workspace_rule = function(t) seen.workspace_rules[#seen.workspace_rules + 1] = t end,
     env = function(name, value) seen.env[name] = value end,
     curve = function(name, t) seen.curves[name] = t end,
     animation = function(t) seen.animations[t.leaf] = t end,
@@ -187,6 +189,7 @@ write(state .. "/off", "")
 seen = run({ plugin = true, qt6ct = true })
 check("off: no options set", #seen.config == 0)
 check("off: no layer rules", #seen.rules == 0)
+check("off: no window or workspace rules", #seen.window_rules == 0 and #seen.workspace_rules == 0)
 check("off: no environment", next(seen.env) == nil)
 check("off: no start hook", next(seen.hooks) == nil)
 check("off: Omarchy's animations left alone", next(seen.animations) == nil)
@@ -495,12 +498,23 @@ end
 local known
 local stubs = io.open("/usr/share/hypr/stubs/hl.meta.lua", "r")
 if stubs then
-  known = { options = {}, rule = {} }
+  known = { options = {}, rule = {}, workspace = {} }
   local in_rule = false
+  local in_workspace = false
   for line in stubs:lines() do
     local key = line:match("^%-%-%-@field %['([%w_.]+)'%]")
     if key then
       known.options[key] = true
+    end
+    if line:match("^%-%-%-@class HL%.WorkspaceRuleSpec") then
+      in_workspace = true
+    elseif in_workspace then
+      local field = line:match("^%-%-%-@field ([%w_]+)%??")
+      if field then
+        known.workspace[field] = true
+      else
+        in_workspace = false
+      end
     end
     if line:match("^%-%-%-@class HL%.LayerRuleSpec") then
       in_rule = true
@@ -542,6 +556,21 @@ end
 
 seen = run()
 check("on: options are set", #seen.config > 0)
+-- The screensaver fades in where it stands, as a window and as the special
+-- workspace it opens on, instead of Omarchy's slide up from the bottom.
+local saver_window, saver_workspace
+for _, rule in ipairs(seen.window_rules) do
+  if rule.match and rule.match.class == "^org\\.omarchy\\.screensaver$" then
+    saver_window = rule
+  end
+end
+for _, rule in ipairs(seen.workspace_rules) do
+  if rule.workspace == "n[s:special:screensaver]" then
+    saver_workspace = rule
+  end
+end
+check("on: the screensaver window fades in", saver_window and saver_window.animation == "fade")
+check("on: and so does its special workspace", saver_workspace and saver_workspace.animation == "fade")
 if known then
   for _, group in ipairs(seen.config) do
     each_option(group, "", function(path)
@@ -551,6 +580,11 @@ if known then
   for _, rule in ipairs(seen.rules) do
     for field in pairs(rule) do
       check("Hyprland has no layer rule field " .. field, known.rule[field])
+    end
+  end
+  for _, rule in ipairs(seen.workspace_rules) do
+    for field in pairs(rule) do
+      check("Hyprland has no workspace rule field " .. field, known.workspace[field])
     end
   end
 else
