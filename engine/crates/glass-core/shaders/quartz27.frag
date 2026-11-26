@@ -135,6 +135,10 @@ const float TINY = 1.0e-6;
 const vec3 LUMA709 = vec3(0.212646, 0.715332, 0.072205);
 
 const float NONE = 65535.0;
+// Within EXACT_FULL pixels of the outline's nearest point the distance is the
+// sub-pixel one, past EXACT_NONE the flood's, and between them a blend.
+const float EXACT_FULL = 2.5;
+const float EXACT_NONE = 4.0;
 
 vec2 unpackSeed(vec4 c) {
     vec4 b = floor(c * 255.0 + 0.5);
@@ -280,10 +284,40 @@ float alphaAt(vec2 p) {
     return texture(maskTex, p / boxSize * maskUvScale).a;
 }
 
+// Where the outline really crosses the line from c along n, in pixels from c:
+// the point at which the layer's own alpha falls to half the body's. The
+// flood knows the outline only to the pixel, and a rim a point wide drawn from
+// that steps along every curve (2026-11-26: "the corners of all the vetro
+// widgets ... look kinda pixelated"); the alpha the layer drew, smoothed at its
+// edge by the client, holds the rest. Seven taps from 1.5 inside to 1.5
+// outside; NONE when the profile has no crossing there.
+float edgeAlong(vec2 c, vec2 n) {
+    float body = max(alphaAt(c - 2.5 * n), maskThreshold);
+    float half_ = 0.5 * body;
+    float prevT = -1.5;
+    float prevA = alphaAt(c + prevT * n);
+    if (prevA < half_)
+        return NONE;
+    for (int i = 1; i < 7; i++) {
+        float t = -1.5 + 0.5 * float(i);
+        float a = alphaAt(c + t * n);
+        if (a < half_) {
+            float span = prevA - a;
+            return prevT + 0.5 * (span > TINY ? (prevA - half_) / span : 0.5);
+        }
+        prevT = t;
+        prevA = a;
+    }
+    return NONE;
+}
+
 // Signed distance from the outline (negative inside) and the outward normal at
 // p: the nearest point of the outline the flood found, which lies half a field
-// texel inside it, and near the outline the field's smoother normal.
-void outline(vec2 p, bool inside, out float dist, out vec2 nrm) {
+// texel inside it, and near the outline the field's smoother normal. Within a
+// few pixels of the outline the distance is measured to the sub-pixel edge
+// (edgeAlong) instead, and exact is how much it was.
+void outline(vec2 p, bool inside, out float dist, out vec2 nrm, out float exact) {
+    exact = 0.0;
     ivec2 at   = clamp(ivec2(floor(p + seedMargin)), ivec2(0), seedHigh);
     vec2  seed = unpackSeed(texelFetch(seedTex, at, 0));
     if (seed.x >= NONE) {
@@ -302,6 +336,16 @@ void outline(vec2 p, bool inside, out float dist, out vec2 nrm) {
     vec2 n = mix(outward, l2 > 1.0e-4 ? -inward * inversesqrt(l2) : outward, near);
     float nl = length(n);
     nrm = nl > TINY ? n / nl : vec2(0.0, 1.0);
+
+    float trust = 1.0 - smoothstep(EXACT_FULL, EXACT_NONE, L);
+    if (trust > 0.0) {
+        vec2  c = seed + 0.5 - seedMargin;
+        float e = edgeAlong(c, nrm);
+        if (e < NONE) {
+            dist  = mix(dist, dot(p - c, nrm) - e, trust);
+            exact = trust;
+        }
+    }
 }
 
 void main() {
@@ -321,7 +365,9 @@ void main() {
     } else {
         float own = alphaAt(p);
         drawn = clamp((own - 0.5 * maskThreshold) / max(maskThreshold, EPS), 0.0, 1.0);
-        outline(p, own >= maskThreshold, dist, nrm);
+        float exact;
+        outline(p, own >= maskThreshold, dist, nrm, exact);
+        drawn = mix(drawn, clamp(0.5 - dist, 0.0, 1.0), exact);
     }
 
     vec2 rot  = vec2(dot(nrm, vec2(1.0, 0.0)), dot(nrm, vec2(0.0, 1.0)));
