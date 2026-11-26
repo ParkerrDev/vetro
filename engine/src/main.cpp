@@ -29,6 +29,7 @@
 #include <hyprland/src/managers/fullscreen/FullscreenController.hpp>
 #include <hyprland/src/plugins/PluginAPI.hpp>
 #include <hyprland/src/render/Renderer.hpp>
+#include <hyprland/src/render/decorations/DecorationPositioner.hpp>
 #include <hyprland/src/managers/SessionLockManager.hpp>
 #include <hyprland/src/render/pass/Pass.hpp>
 #include <hyprland/src/render/pass/SurfacePassElement.hpp>
@@ -82,6 +83,39 @@ static void onMonitorGone(PHLMONITOR monitor) {
     g_pGlobalState->subsurfaceTempFramebuffers.erase(monitor->m_id);
     Backdrop::forget(monitor->m_id);
     Motion::onMonitorGone(monitor->m_id);
+}
+
+// Hyprland takes a decoration off a window only on that window's next
+// updateWindowDecos(), which does nothing while the window is unmapped or
+// hidden. A decoration's code is in this library, so one still queued on a
+// hidden window when the library is unloaded runs from unmapped memory once
+// that window shows again (2026-11-26: Hyprland aborted mapping a window after
+// the engine had been unloaded and loaded again). Every decoration is asked
+// off, and whatever Hyprland left queued is taken off here, while this code is
+// still mapped.
+static void removeDecorationsNow() {
+    std::vector<IHyprWindowDecoration*> ours;
+    for (auto& decoration : g_pGlobalState->decorations) {
+        if (auto* deco = decoration.get())
+            ours.push_back(deco);
+    }
+    g_pGlobalState->decorations.clear();
+
+    const auto isOurs = [&ours](const IHyprWindowDecoration* deco) { return std::ranges::find(ours, deco) != ours.end(); };
+    for (auto* deco : ours)
+        HyprlandAPI::removeWindowDecoration(PHANDLE, deco);
+
+    for (auto& window : Desktop::viewState()->windows()) {
+        if (!window)
+            continue;
+        std::erase_if(window->m_decosToRemove, isOurs);
+        std::erase_if(window->m_windowDecorations, [&isOurs](const auto& deco) {
+            if (!isOurs(deco.get()))
+                return false;
+            g_pDecorationPositioner->uncacheDecoration(deco.get());
+            return true;
+        });
+    }
 }
 
 static void onNewWindow(PHLWINDOW window) {
@@ -1045,11 +1079,7 @@ APICALL EXPORT void PLUGIN_EXIT() {
 
     Diagnostics::shutdown();
 
-    for (auto& decoration : g_pGlobalState->decorations) {
-        if (auto* deco = decoration.get())
-            HyprlandAPI::removeWindowDecoration(PHANDLE, deco);
-    }
-    g_pGlobalState->decorations.clear();
+    removeDecorationsNow();
 
     if (g_pGlobalState->renderLayerHook) {
         HyprlandAPI::removeFunctionHook(PHANDLE, g_pGlobalState->renderLayerHook);
