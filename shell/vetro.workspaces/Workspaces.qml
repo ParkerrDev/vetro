@@ -27,8 +27,8 @@ import "../vetro.lib" as V
 // monitor, or cast for a virtual one); this bar's own display's tray is the
 // brighter. A dot under a number says it has windows; one without is there
 // but empty, and dimmer. Only workspaces that exist are shown. The mouse's
-// display has its tray outlined more strongly than the rest, and its
-// workspace's number at full brightness. Agents' workspaces (agent-workspace)
+// display has its icon at full brightness (the others are dimmed), and its
+// workspace's number too. Agents' workspaces (agent-workspace)
 // have a tray of their own, led by a robot.
 //
 // Where the Hyprland side keeps locks in $XDG_RUNTIME_DIR/hypr-workspace-locks
@@ -338,6 +338,21 @@ BarWidget {
     return { trays: trays, free: free }
   }
 
+  // The layout the trays are drawn from, changed only when it says something
+  // new. Hyprland's events come many times a second, and a fresh layout each
+  // time would make every number anew, so for a moment the pane would find
+  // the new numbers still standing at the start of their tray (2026-11-27:
+  // "falls back to the first workspace number of that display").
+  property var stable: ({ trays: [], free: [] })
+  property string stableText: ""
+  function settle() {
+    var text = JSON.stringify(root.layout)
+    if (text === root.stableText) return
+    root.stableText = text
+    root.stable = root.layout
+  }
+  onLayoutChanged: root.settle()
+
   implicitWidth: (root.vertical ? strip.implicitWidth : strip.implicitWidth + trailingGap)
   implicitHeight: strip.implicitHeight
 
@@ -528,9 +543,20 @@ BarWidget {
   }
 
   onWantedChanged: Qt.callLater(root.follow)
+  // Numbers made anew stand where their row puts them only after it lays
+  // them out, so look again once they have settled.
+  onButtonsVersionChanged: resettle.restart()
+  Timer {
+    id: resettle
+    interval: 80
+    onTriggered: root.follow()
+  }
   onPointingChanged: Qt.callLater(root.follow)
   onHostChanged: root.anew()
-  Component.onCompleted: Qt.callLater(root.follow)
+  Component.onCompleted: {
+    root.settle()
+    Qt.callLater(root.follow)
+  }
   Component.onDestruction: root.tell(null)
 
   // The pane: a tile of clear glass a little wider than it is tall, its light
@@ -649,19 +675,25 @@ BarWidget {
       readonly property real screenHeight: Math.round(Style.font.body * 1.3)
       readonly property real screenWidth: Math.round(screenHeight * 1.5)
       readonly property real stem: Math.max(2, Math.round(Style.font.body * 0.16))
+      // Drawn at the display's own pixels, not the bar's units, so a scaled
+      // display does not blow the cut-out up into steps (2026-11-27: "the
+      // numbers and dots inside the display icons are pixilated").
+      readonly property size sharp: Qt.size(Math.ceil(width * Screen.devicePixelRatio),
+                                            Math.ceil(height * Screen.devicePixelRatio))
 
       Item {
         id: shape
         anchors.fill: parent
         visible: false
         layer.enabled: true
+        layer.smooth: true
+        layer.textureSize: plate.sharp
         Rectangle {
           id: screen
           width: plate.screenWidth
           height: plate.screenHeight
           anchors.centerIn: parent
           anchors.verticalCenterOffset: -Math.round(Style.font.body * 0.2)
-          // Aside for the dots, when it has windows.
           radius: Math.round(height * 0.2)
           color: root.ink
         }
@@ -687,13 +719,29 @@ BarWidget {
         anchors.fill: parent
         visible: false
         layer.enabled: true
+        layer.smooth: true
+        layer.textureSize: plate.sharp
         Text {
           text: plate.label
           font.family: root.bar ? root.bar.fontFamily : Style.font.family
           font.pixelSize: Math.round(Style.font.body * 0.95)
           font.bold: true
           color: "black"
-          x: screen.x + (screen.width - width) / 2
+          // Aside, to make room for the dot, when it has windows.
+          x: screen.x + (screen.width - width) / 2 - (dot.visible ? dot.width * 0.9 : 0)
+          y: screen.y + (screen.height - height) / 2
+        }
+        // A dot cut beside the number says the display has windows on it
+        // (2026-11-27: "displays with windows on them should get little dots
+        // inside their screen icon").
+        Rectangle {
+          id: dot
+          visible: number.occupied
+          width: Math.max(3, Math.round(Style.font.body * 0.26))
+          height: width
+          radius: width / 2
+          color: "black"
+          x: screen.x + screen.width - width - Math.round(screen.height * 0.28)
           y: screen.y + (screen.height - height) / 2
         }
       }
@@ -703,8 +751,9 @@ BarWidget {
         maskEnabled: true
         maskSource: hole
         maskInverted: true
-        maskThresholdMin: 0.4
-        maskSpreadAtMin: 0.3
+        // The cut follows the text's own soft edge, not a hard threshold.
+        maskThresholdMin: 0.5
+        maskSpreadAtMin: 1
         // Full under the number's own brightness; brighter still where
         // the mouse is.
         opacity: plate.parent.mouseHere ? 1 : 0.7
@@ -714,10 +763,10 @@ BarWidget {
   }
 
   readonly property color ink: root.bar ? root.bar.barForeground : Color.foreground
-  // The mouse's display has its tray outlined, stronger than any other, and
-  // its workspace's number at full brightness (2026-11-27: "more clear which
-  // display/workspace the mouse is on"; no accent colour: "avoid accent
-  // colors").
+  // The mouse's display has its icon at full brightness, the others dimmed,
+  // and its workspace's number at full brightness (2026-11-27: "more clear
+  // which display/workspace the mouse is on"; no accent colour, no outline:
+  // "just the icon should get brighter").
   readonly property color mouseInk: root.ink
   readonly property string mouseMonitor: Hyprland.focusedMonitor ? String(Hyprland.focusedMonitor.name) : ""
 
@@ -732,19 +781,17 @@ BarWidget {
     y: root.vertical ? (parent.height - height) / 2 : parent.height / 2 + Math.round(Style.font.body * 0.62)
   }
 
-  // A tray's back: a capsule, brighter on this bar's own display, outlined in
-  // the accent on the mouse's.
+  // A tray's back: a capsule, brighter on this bar's own display.
   component TrayBack: Rectangle {
     property bool here: false
-    property bool mouse: false
     anchors.centerIn: parent
     readonly property real slim: selector.thickness + Style.space(2)
     width: root.vertical ? Math.min(parent.width - Style.space(6), slim) : parent.width
     height: root.vertical ? parent.height : Math.min(parent.height - Style.space(10), slim)
     radius: Math.min(width, height) / 2
     color: Qt.rgba(root.ink.r, root.ink.g, root.ink.b, here ? 0.16 : 0.06)
-    border.width: mouse ? 2 : 1
-    border.color: Qt.rgba(root.ink.r, root.ink.g, root.ink.b, mouse ? 0.9 : here ? 0.3 : 0.14)
+    border.width: 1
+    border.color: Qt.rgba(root.ink.r, root.ink.g, root.ink.b, here ? 0.3 : 0.14)
   }
 
   // The agents' workspaces, in a tray of their own led by a robot (once
@@ -938,7 +985,7 @@ BarWidget {
     // (2026-11-27: "an entire overhaul of workspace management and grouping",
     // to make "more clear which workspaces belong to which monitors").
     Repeater {
-      model: root.layout.trays
+      model: root.stable.trays
 
       Item {
         id: trayItem
@@ -956,7 +1003,6 @@ BarWidget {
         TrayBack {
           visible: !trayItem.tray.locked
           here: trayItem.tray.here
-          mouse: trayItem.tray.monitor === root.mouseMonitor
         }
 
         Grid {
@@ -976,7 +1022,7 @@ BarWidget {
             text: root.displayGlyph(trayItem.tray.kind)
             centerFigures: false
             foreground: trayItem.tray.monitor === root.mouseMonitor ? root.mouseInk : root.ink
-            opacity: trayItem.tray.here || trayItem.tray.monitor === root.mouseMonitor ? 1 : 0.6
+            opacity: trayItem.tray.monitor === root.mouseMonitor ? 1 : 0.45
             horizontalMargin: 4
             verticalPadding: 6
             fixedHeight: root.vertical ? -1 : root.barSize
@@ -1020,7 +1066,6 @@ BarWidget {
       height: visible ? implicitHeight : 0
 
       TrayBack {
-        mouse: root.mouseOnAgents
       }
 
       Grid {
@@ -1039,7 +1084,7 @@ BarWidget {
           text: "\u{f06a9}"
           centerFigures: false
           foreground: root.mouseOnAgents ? root.mouseInk : root.ink
-          opacity: root.mouseOnAgents ? 1 : 0.6
+          opacity: root.mouseOnAgents ? 1 : 0.45
           horizontalMargin: 4
           verticalPadding: 6
           fixedHeight: root.vertical ? -1 : root.barSize
@@ -1062,13 +1107,13 @@ BarWidget {
 
     // The numbers no display holds, apart from the trays.
     Grid {
-      visible: root.layout.free.length > 0
+      visible: root.stable.free.length > 0
       flow: root.vertical ? Grid.TopToBottom : Grid.LeftToRight
       columns: root.vertical ? 1 : 0
       rows: root.vertical ? 0 : 1
       spacing: root.gap
       Repeater {
-        model: root.layout.free
+        model: root.stable.free
         WorkspaceNumber {
           required property int modelData
           workspaceId: modelData
