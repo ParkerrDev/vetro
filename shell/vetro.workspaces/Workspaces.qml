@@ -28,7 +28,10 @@ import "../vetro.lib" as V
 // monitor, or cast for a virtual one); this bar's own display's tray is the
 // brighter. In every tray a bar under a number marks what that display shows.
 // A number with windows is bright, one that is there but empty dim, and the
-// unused ones stand apart after the trays, dimmest.
+// unused ones stand apart after the trays, dimmest. The mouse's display has
+// its tray outlined in the theme's accent, and its workspace's number is in
+// that colour. Agents' workspaces (agent-workspace) have a tray of their own,
+// led by a robot.
 //
 // Where the Hyprland side keeps locks in $XDG_RUNTIME_DIR/hypr-workspace-locks
 // (shared-workspaces does), a locked number is a little display with its
@@ -363,6 +366,11 @@ BarWidget {
   // Each number's button, by workspace id, so the pane can find its middle.
   property var buttons: ({})
   property int buttonsVersion: 0
+  // A number's button by workspace; an agents' one is kept by name.
+  function buttonFor(workspace) {
+    if (!workspace) return null
+    return root.buttons[workspace.id] || root.buttons["name:" + workspace.name] || null
+  }
   function register(id, button) {
     root.buttons[id] = button
     root.buttonsVersion++
@@ -394,7 +402,8 @@ BarWidget {
   // here (a special one, or a neighbour's).
   readonly property int focusedIndex: {
     var focused = root.current
-    return focused === null ? -1 : root.workspaceIds().indexOf(focused.id)
+    void root.buttonsVersion
+    return focused === null ? -1 : (root.buttonFor(focused) ? 0 : -1)
   }
   // The neighbour whose workspace is marked, if one is.
   readonly property var focusedStop: root.stopFor(root.current)
@@ -426,7 +435,7 @@ BarWidget {
       return root.along(place) + root.extent(place) / 2 - origin
     }
 
-    var button = root.buttons[focused.id]
+    var button = root.buttonFor(focused)
     if (!button) return NaN
     return root.along(root.placeOf(root)) + button.middle - origin
   }
@@ -577,6 +586,7 @@ BarWidget {
 
     bar: root.bar
     text: slot === root.slots ? "0" : String(slot)
+    foreground: mouseHere && !blinking ? root.mouseInk : root.ink
     active: lit
     // With apps, bright; there but empty, dim; unused, dimmer still.
     opacity: blinking ? (lit ? 1 : 0.15) : (mouseHere ? 1 : occupied ? 0.9 : inTray ? 0.5 : 0.28)
@@ -689,6 +699,166 @@ BarWidget {
   }
 
   readonly property color ink: root.bar ? root.bar.barForeground : Color.foreground
+  // The mouse's display and workspace are marked in the theme's accent: its
+  // tray outlined, its number in that colour (2026-11-27: "more clear which
+  // display/workspace the mouse is on").
+  readonly property color mouseInk: Color.accent
+  readonly property string mouseMonitor: Hyprland.focusedMonitor ? String(Hyprland.focusedMonitor.name) : ""
+
+  // A tray's back: a capsule, brighter on this bar's own display, outlined in
+  // the accent on the mouse's.
+  component TrayBack: Rectangle {
+    property bool here: false
+    property bool mouse: false
+    anchors.centerIn: parent
+    readonly property real slim: selector.thickness + Style.space(2)
+    width: root.vertical ? Math.min(parent.width - Style.space(6), slim) : parent.width
+    height: root.vertical ? parent.height : Math.min(parent.height - Style.space(10), slim)
+    radius: Math.min(width, height) / 2
+    color: Qt.rgba(root.ink.r, root.ink.g, root.ink.b, here ? 0.16 : 0.06)
+    border.width: mouse ? 2 : 1
+    border.color: mouse ? root.mouseInk : Qt.rgba(root.ink.r, root.ink.g, root.ink.b, here ? 0.35 : 0.14)
+  }
+
+  // The agents' workspaces, in a tray of their own led by a robot (once
+  // agent-workspace's own bar button; 2026-11-27: "the agent workspaces should
+  // share this exact same look, in-fact just merge the projects together").
+  // They are, in order, the agents' workspace while it has windows (its live
+  // view, agent.watch, does not count), each agent desk (agent-ws new), and
+  // each other named workspace with windows. A click goes to one, or back
+  // from it; a right click on a desk shuts the desk down. Nothing shows while
+  // none is open.
+  readonly property string agentsWorkspace: "agents"
+  readonly property string deskPrefix: "agents-"
+  property int agentsRunning: 0
+
+  readonly property var agentEntries: {
+    var all = Hyprland.workspaces.values
+    var main = []
+    var desks = []
+    var others = []
+    var shownName = root.current ? String(root.current.name) : ""
+    for (var i = 0; i < all.length && i < 128; i++) {
+      var name = String(all[i].name)
+      var wins = all[i].toplevels.values
+      var count = wins.length
+      if (/^-?[0-9]+$/.test(name) || name.indexOf("special:") === 0) continue
+      if (name === root.agentsWorkspace) {
+        for (var w = 0; w < wins.length && w < 256; w++) {
+          var ipc = wins[w].lastIpcObject
+          var app = wins[w].wayland ? String(wins[w].wayland.appId) : ""
+          if (app === "agent.watch" || (ipc && ipc["class"] === "agent.watch")) count--
+        }
+        if (count > 0 || name === shownName)
+          main.push({ name: name, kind: "agents", label: "Agents' workspace", windows: count, workspace: all[i] })
+      } else if (name.indexOf(root.deskPrefix) === 0) {
+        desks.push({ name: name, kind: "desk", label: "Desk " + name.slice(root.deskPrefix.length), windows: count, workspace: all[i] })
+      } else if (count > 0) {
+        others.push({ name: name, kind: "other", label: "Workspace " + name, windows: count, workspace: all[i] })
+      }
+    }
+    var byName = function (a, b) { return a.name < b.name ? -1 : a.name > b.name ? 1 : 0 }
+    desks.sort(byName)
+    others.sort(byName)
+    return main.concat(desks, others)
+  }
+
+  Process {
+    id: agentProbe
+    command: ["agent-ws", "agents", "--json"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        try {
+          root.agentsRunning = JSON.parse(text).length
+        } catch (e) {
+          root.agentsRunning = 0
+        }
+      }
+    }
+  }
+  Timer {
+    interval: 5000
+    running: root.agentEntries.length > 0
+    repeat: true
+    triggeredOnStart: true
+    onTriggered: if (!agentProbe.running) agentProbe.running = true
+  }
+
+  function goAgent(entry, button) {
+    if (!root.bar) return
+    if (entry.kind === "desk" && button === Qt.RightButton) {
+      root.bar.run("agent-ws close " + entry.name.slice(root.deskPrefix.length))
+      return
+    }
+    var target = root.current && String(root.current.name) === entry.name ? "previous_per_monitor" : "name:" + entry.name
+    root.dispatch("hl.dsp.focus({ workspace = " + JSON.stringify(target) + " })")
+  }
+
+  readonly property bool mouseOnAgents: {
+    var m = root.mouseWorkspace
+    if (!m) return false
+    for (var i = 0; i < root.agentEntries.length && i < 64; i++) {
+      if (root.agentEntries[i].name === String(m.name)) return true
+    }
+    return false
+  }
+
+  // Which workspace each display shows, by name.
+  readonly property var shownNames: {
+    var names = []
+    var all = Hyprland.monitors.values
+    for (var i = 0; i < all.length && i < 16; i++) {
+      if (all[i].activeWorkspace) names.push(String(all[i].activeWorkspace.name))
+    }
+    return names
+  }
+
+  // One agents' workspace's button: numbered in order, marked like the rest.
+  component AgentNumber: WidgetButton {
+    id: agentNumber
+    required property var entry
+    required property int index
+    readonly property bool occupied: entry.windows > 0
+    readonly property bool shown: root.shownNames.indexOf(entry.name) !== -1
+    readonly property bool mouseHere: root.mouseWorkspace !== null && String(root.mouseWorkspace.name) === entry.name
+    readonly property real middle: {
+      var at = root.vertical ? y + height / 2 : x + width / 2
+      for (var item = parent; item && item !== root && item !== null; item = item.parent)
+        at += root.vertical ? item.y : item.x
+      return at
+    }
+    onMiddleChanged: root.buttonsVersion++
+    Component.onCompleted: root.register("name:" + entry.name, agentNumber)
+    Component.onDestruction: root.unregister("name:" + entry.name, agentNumber)
+
+    bar: root.bar
+    text: String(index + 1)
+    foreground: mouseHere ? root.mouseInk : root.ink
+    opacity: mouseHere ? 1 : occupied ? 0.9 : 0.5
+    Behavior on opacity {
+      NumberAnimation { duration: V.Look.ms(160) }
+    }
+    horizontalMargin: 6
+    verticalPadding: 6
+    fixedWidth: root.vertical ? root.barSize - 2 * root.trayPad : root.cell
+    fixedHeight: root.vertical ? root.cell : root.barSize
+    tooltipText: entry.kind === "agents"
+                 ? entry.label + ": " + entry.windows + (entry.windows === 1 ? " window, " : " windows, ")
+                   + root.agentsRunning + (root.agentsRunning === 1 ? " agent running" : " agents running")
+                 : entry.kind === "desk" ? entry.label + " (right click shuts it down)"
+                 : entry.label + ": " + entry.windows + (entry.windows === 1 ? " window" : " windows")
+    onPressed: function(button) { root.goAgent(entry, button) }
+
+    Rectangle {
+      visible: agentNumber.shown
+      width: root.vertical ? Math.max(3, Math.round(Style.font.body * 0.22)) : Math.round(Style.font.body * 0.8)
+      height: root.vertical ? Math.round(Style.font.body * 0.8) : Math.max(2, Math.round(Style.font.body * 0.16))
+      radius: Math.min(width, height) / 2
+      color: root.ink
+      x: root.vertical ? Math.round(Style.font.body * 0.1) : (parent.width - width) / 2
+      y: root.vertical ? (parent.height - height) / 2 : parent.height / 2 + Math.round(Style.font.body * 0.72)
+    }
+  }
 
   Grid {
     id: strip
@@ -717,15 +887,9 @@ BarWidget {
         width: implicitWidth
         height: implicitHeight
 
-        Rectangle {
-          anchors.centerIn: parent
-          readonly property real slim: selector.thickness + Style.space(2)
-          width: root.vertical ? Math.min(parent.width - Style.space(6), slim) : parent.width
-          height: root.vertical ? parent.height : Math.min(parent.height - Style.space(10), slim)
-          radius: Math.min(width, height) / 2
-          color: Qt.rgba(root.ink.r, root.ink.g, root.ink.b, trayItem.tray.here ? 0.16 : 0.06)
-          border.width: 1
-          border.color: Qt.rgba(root.ink.r, root.ink.g, root.ink.b, trayItem.tray.here ? 0.35 : 0.14)
+        TrayBack {
+          here: trayItem.tray.here
+          mouse: trayItem.tray.monitor === root.mouseMonitor
         }
 
         Grid {
@@ -743,8 +907,8 @@ BarWidget {
             bar: root.bar
             text: root.displayGlyph(trayItem.tray.kind)
             centerFigures: false
-            foreground: root.ink
-            opacity: trayItem.tray.here ? 1 : 0.6
+            foreground: trayItem.tray.monitor === root.mouseMonitor ? root.mouseInk : root.ink
+            opacity: trayItem.tray.here || trayItem.tray.monitor === root.mouseMonitor ? 1 : 0.6
             horizontalMargin: 4
             verticalPadding: 6
             fixedHeight: root.vertical ? -1 : root.barSize
@@ -762,6 +926,56 @@ BarWidget {
               workspaceId: modelData
               tray: trayItem.tray
             }
+          }
+        }
+      }
+    }
+
+    // The agents' tray.
+    Item {
+      id: agentTray
+      visible: root.agentEntries.length > 0
+      implicitWidth: root.vertical ? root.barSize : agentRow.implicitWidth + 2 * root.trayPad
+      implicitHeight: root.vertical ? agentRow.implicitHeight + 2 * root.trayPad : root.barSize
+      width: visible ? implicitWidth : 0
+      height: visible ? implicitHeight : 0
+
+      TrayBack {
+        mouse: root.mouseOnAgents
+      }
+
+      Grid {
+        id: agentRow
+        anchors.centerIn: parent
+        flow: root.vertical ? Grid.TopToBottom : Grid.LeftToRight
+        columns: root.vertical ? 1 : 0
+        rows: root.vertical ? 0 : 1
+        spacing: root.gap
+        verticalItemAlignment: Grid.AlignVCenter
+        horizontalItemAlignment: Grid.AlignHCenter
+
+        // nf-md-robot: goes to the agents' workspace, and back from it.
+        WidgetButton {
+          bar: root.bar
+          text: "\u{f06a9}"
+          centerFigures: false
+          foreground: root.mouseOnAgents ? root.mouseInk : root.ink
+          opacity: root.mouseOnAgents ? 1 : 0.6
+          horizontalMargin: 4
+          verticalPadding: 6
+          fixedHeight: root.vertical ? -1 : root.barSize
+          tooltipText: root.agentEntries.length + (root.agentEntries.length === 1 ? " agent workspace open, " : " agent workspaces open, ")
+                       + root.agentsRunning + (root.agentsRunning === 1 ? " agent running" : " agents running")
+          onPressed: function(button) {
+            root.goAgent({ name: root.agentsWorkspace, kind: "agents" }, button)
+          }
+        }
+
+        Repeater {
+          model: root.agentEntries
+          AgentNumber {
+            required property var modelData
+            entry: modelData
           }
         }
       }
