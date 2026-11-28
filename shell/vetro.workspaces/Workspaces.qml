@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick.Layouts
 import QtQuick.Effects
 import Quickshell
 import Quickshell.Hyprland
@@ -23,6 +22,13 @@ import "../vetro.lib" as V
 // and the rest while they exist. Pressing one goes to it through
 // o.workspaces.focus, as Omarchy's keys do. The pane marks the workspace this
 // bar's display shows.
+//
+// The numbers stand in trays, one for each display that holds any of them,
+// in the order the displays stand, each led by the display's icon (laptop,
+// monitor, or cast for a virtual one); this bar's own display's tray is the
+// brighter. In every tray a bar under a number marks what that display shows.
+// A number with windows is bright, one that is there but empty dim, and the
+// unused ones stand apart after the trays, dimmest.
 //
 // Where the Hyprland side keeps locks in $XDG_RUNTIME_DIR/hypr-workspace-locks
 // (shared-workspaces does), a locked number is a little display with its
@@ -163,14 +169,23 @@ BarWidget {
   // locks can be made.
   property bool locksKnown: false
   property var lockedIds: []
+  property var lockedMonitors: []
+  property var lockedBy: ({})
   function readLocks(text) {
     var ids = []
+    var monitors = []
+    var by = {}
     var lines = String(text || "").split("\n")
     for (var i = 0; i < lines.length && i < 32; i++) {
-      var match = /^\S+\s+(-?\d+)\s*$/.exec(lines[i])
-      if (match) ids.push(Number(match[1]))
+      var match = /^(\S+)\s+(-?\d+)\s*$/.exec(lines[i])
+      if (!match) continue
+      ids.push(Number(match[2]))
+      monitors.push(match[1])
+      by[Number(match[2])] = match[1]
     }
     if (JSON.stringify(ids) !== JSON.stringify(root.lockedIds)) root.lockedIds = ids
+    if (JSON.stringify(monitors) !== JSON.stringify(root.lockedMonitors)) root.lockedMonitors = monitors
+    if (JSON.stringify(by) !== JSON.stringify(root.lockedBy)) root.lockedBy = by
   }
   FileView {
     id: locksFile
@@ -232,24 +247,23 @@ BarWidget {
   // A locked number has more room, so the display drawn behind it stands
   // clear of the numbers beside it.
   readonly property real lockedCell: root.vertical ? root.cell : Math.round(root.cell + Style.font.body * 1.3)
-  // A locked one with windows has room on the right for their dots.
-  function cellFor(id) {
-    if (root.lockedIds.indexOf(id) === -1) return root.cell
-    var ws = root.workspaceById(id)
-    var occupied = ws !== null && ws.toplevels.values.length > 0
-    return root.lockedCell + (occupied && !root.vertical ? root.pipRoom : 0)
-  }
-  readonly property real pipRoom: Math.round(Style.font.body * 0.7)
 
-  // The displays, left to right (then top to bottom), by name: the order of
-  // the segments in each number's map.
+  // A tray's inner margin, and the room between trays.
+  readonly property real trayPad: Style.space(3)
+  readonly property real trayGap: Style.space(4)
+
+  function monitorPosition(m) {
+    var ipc = m.lastIpcObject || {}
+    return { x: m.x !== undefined ? m.x : (ipc.x || 0), y: m.y !== undefined ? m.y : (ipc.y || 0) }
+  }
+
+  // The displays, left to right (then top to bottom), as they stand.
   readonly property var monitorOrder: {
     var list = []
     var all = Hyprland.monitors.values
     for (var i = 0; i < all.length && i < 16; i++) {
-      var m = all[i]
-      var ipc = m.lastIpcObject || {}
-      list.push({ name: String(m.name), x: m.x !== undefined ? m.x : (ipc.x || 0), y: m.y !== undefined ? m.y : (ipc.y || 0) })
+      var at = root.monitorPosition(all[i])
+      list.push({ name: String(all[i].name), x: at.x, y: at.y })
     }
     list.sort(function (a, b) { return a.x !== b.x ? a.x - b.x : a.y - b.y })
     var names = []
@@ -257,8 +271,52 @@ BarWidget {
     return names
   }
 
-  implicitWidth: grid.implicitWidth + trailingGap
-  implicitHeight: grid.implicitHeight
+  // The kind of display, for its icon: the laptop's own panel, a virtual one
+  // (another machine's screen), or a monitor.
+  function displayKind(name) {
+    if (/^(eDP|LVDS|DSI)/.test(name)) return "laptop"
+    if (/^(HEADLESS|VIRTUAL|WL-|X11-)/i.test(name)) return "remote"
+    return "monitor"
+  }
+  function displayGlyph(kind) {
+    return kind === "laptop" ? "\u{f0322}" : kind === "remote" ? "\u{f0118}" : "\u{f0379}"
+  }
+
+  function monitorOfLock(id) {
+    return root.lockedBy[id] || ""
+  }
+
+  // The numbers in trays, one tray for each display that holds any of them,
+  // in the order the displays stand, and the numbers no display holds:
+  //   { trays: [{ monitor, kind, ids, shown, here, locked }], free: [ids] }
+  readonly property var layout: {
+    var ids = root.workspaceIds()
+    var byMonitor = {}
+    var free = []
+    for (var i = 0; i < ids.length && i < 64; i++) {
+      var ws = root.workspaceById(ids[i])
+      var name = ws && ws.monitor ? String(ws.monitor.name) : ""
+      if (name === "") { free.push(ids[i]); continue }
+      if (!byMonitor[name]) byMonitor[name] = []
+      byMonitor[name].push(ids[i])
+    }
+    var all = Hyprland.monitors.values
+    var trays = []
+    for (var j = 0; j < root.monitorOrder.length && j < 16; j++) {
+      var monitor = root.monitorOrder[j]
+      if (!byMonitor[monitor]) continue
+      var shown = 0
+      for (var k = 0; k < all.length && k < 16; k++) {
+        if (String(all[k].name) === monitor && all[k].activeWorkspace) shown = all[k].activeWorkspace.id
+      }
+      trays.push({ monitor: monitor, kind: root.displayKind(monitor), ids: byMonitor[monitor],
+                   shown: shown, here: monitor === root.monitorName, locked: root.lockedMonitors.indexOf(monitor) !== -1 })
+    }
+    return { trays: trays, free: free }
+  }
+
+  implicitWidth: (root.vertical ? strip.implicitWidth : strip.implicitWidth + trailingGap)
+  implicitHeight: strip.implicitHeight
 
   // The bar keeps every widget in a place of its own, and the places of one
   // side stand in one row: this widget's, and those beside it.
@@ -302,6 +360,18 @@ BarWidget {
     }
     return found
   }
+  // Each number's button, by workspace id, so the pane can find its middle.
+  property var buttons: ({})
+  property int buttonsVersion: 0
+  function register(id, button) {
+    root.buttons[id] = button
+    root.buttonsVersion++
+  }
+  function unregister(id, button) {
+    if (root.buttons[id] === button) delete root.buttons[id]
+    root.buttonsVersion++
+  }
+
   readonly property var stops: beside.stops
   readonly property Item host: beside.host
 
@@ -329,7 +399,7 @@ BarWidget {
   // The neighbour whose workspace is marked, if one is.
   readonly property var focusedStop: root.stopFor(root.current)
   // With the focus on a workspace that has no button, or on a locked one, the
-  // pane is put away.
+  // pane is put away: the little display already says it is shown.
   readonly property bool pointing: focusedStop !== null
     || (focusedIndex >= 0 && root.lockedIds.indexOf(root.current.id) === -1)
 
@@ -356,18 +426,16 @@ BarWidget {
       return root.along(place) + root.extent(place) / 2 - origin
     }
 
-    var ids = root.workspaceIds()
-    var index = ids.indexOf(focused.id)
-    if (index < 0) return NaN
-    var before = 0
-    for (var i = 0; i < index && i < 64; i++) before += root.cellFor(ids[i]) + root.gap
-    return root.along(root.placeOf(root)) + before + root.cellFor(focused.id) / 2 - origin
+    var button = root.buttons[focused.id]
+    if (!button) return NaN
+    return root.along(root.placeOf(root)) + button.middle - origin
   }
 
   // The same, worked out again whenever anything it is made of changes: the
   // focus, the numbers shown, a place in the row.
   readonly property real wanted: {
     var at = root.spot()
+    void root.buttonsVersion
     return isNaN(at) ? 0 : at
   }
 
@@ -477,202 +545,241 @@ BarWidget {
   // the mouse's.
   readonly property var mouseWorkspace: Hyprland.focusedWorkspace
 
-  // Which workspaces some display shows now: each such number is at full
-  // brightness, one with windows but not shown a little dimmer, an empty one
-  // dimmest (2026-11-27: "more clear what workspace numbers are
-  // currently active on each display").
-  readonly property var shownIds: {
-    var ids = []
-    var all = Hyprland.monitors.values
-    for (var i = 0; i < all.length && i < 16; i++) {
-      var ws = all[i].activeWorkspace
-      if (ws && ids.indexOf(ws.id) === -1) ids.push(ws.id)
+  // One number's button. `tray` is the tray it stands in, null for a free one.
+  component WorkspaceNumber: WidgetButton {
+    id: number
+    required property int workspaceId
+    property var tray: null
+    property bool inTray: tray !== null
+
+    readonly property var workspace: root.workspaceById(workspaceId)
+    readonly property bool occupied: workspace !== null && workspace.toplevels.values.length > 0
+    // Its display shows it now.
+    readonly property bool shown: inTray && tray.shown === workspaceId
+    readonly property bool mouseHere: root.mouseWorkspace !== null && root.mouseWorkspace.id === workspaceId
+    readonly property bool blinking: root.blinkId === workspaceId
+    // Lit on even steps: full, a little larger and in the attention colour;
+    // between them, all but gone. A theme whose attention colour is its text
+    // colour still shows the flashes.
+    readonly property bool lit: blinking && root.blinkStep % 2 === 0
+    readonly property int slot: root.slotOf(workspaceId)
+    readonly property bool lockedHere: root.lockedIds.indexOf(workspaceId) !== -1
+    // Its middle along the bar, from this widget's start.
+    readonly property real middle: {
+      var at = root.vertical ? y + height / 2 : x + width / 2
+      for (var item = parent; item && item !== root && item !== null; item = item.parent)
+        at += root.vertical ? item.y : item.x
+      return at
     }
-    return ids
+    onMiddleChanged: root.buttonsVersion++
+    Component.onCompleted: root.register(workspaceId, number)
+    Component.onDestruction: root.unregister(workspaceId, number)
+
+    bar: root.bar
+    text: slot === root.slots ? "0" : String(slot)
+    active: lit
+    // With apps, bright; there but empty, dim; unused, dimmer still.
+    opacity: blinking ? (lit ? 1 : 0.15) : (mouseHere ? 1 : occupied ? 0.9 : inTray ? 0.5 : 0.28)
+    Behavior on opacity {
+      enabled: !number.blinking
+      NumberAnimation { duration: V.Look.ms(160) }
+    }
+    scale: lit ? 1.25 : 1
+    Behavior on scale {
+      NumberAnimation { duration: V.Look.ms(110); easing.type: Easing.OutQuad }
+    }
+    horizontalMargin: 6
+    verticalPadding: 6
+    fixedWidth: root.vertical ? root.barSize - 2 * root.trayPad : lockedHere ? root.lockedCell : root.cell
+    labelVisible: !lockedHere
+    fixedHeight: root.vertical ? root.cell : root.barSize
+    tooltipText: (occupied ? "Has windows" : inTray ? "Empty" : "Unused")
+                 + (inTray ? ", on " + tray.monitor + (shown ? ", shown there" : "") : "")
+    // A right click locks this display to it, or frees it, where the
+    // Hyprland side has locks.
+    onPressed: function(button) {
+      if (button === Qt.RightButton && root.locksKnown) root.toggleLock(workspaceId)
+      else root.focusWorkspace(workspaceId)
+    }
+
+    // The one its display shows: a bar under the number, on every display's
+    // tray, so each display's current workspace reads at a glance.
+    Rectangle {
+      visible: number.shown && !number.lockedHere
+      width: root.vertical ? Math.max(3, Math.round(Style.font.body * 0.22)) : Math.round(Style.font.body * 0.8)
+      height: root.vertical ? Math.round(Style.font.body * 0.8) : Math.max(2, Math.round(Style.font.body * 0.16))
+      radius: Math.min(width, height) / 2
+      color: root.ink
+      x: root.vertical ? Math.round(Style.font.body * 0.1) : (parent.width - width) / 2
+      y: root.vertical ? (parent.height - height) / 2 : parent.height / 2 + Math.round(Style.font.body * 0.72)
+    }
+
+    // A locked one is a little display: a filled screen on a stand, its
+    // number cut out of the screen so the bar shows through it.
+    Item {
+      id: plate
+      visible: parent.lockedHere
+      anchors.fill: parent
+      readonly property string label: parent.text
+      readonly property real screenHeight: Math.round(Style.font.body * 1.3)
+      readonly property real screenWidth: Math.round(screenHeight * 1.5)
+      readonly property real stem: Math.max(2, Math.round(Style.font.body * 0.16))
+
+      Item {
+        id: shape
+        anchors.fill: parent
+        visible: false
+        layer.enabled: true
+        Rectangle {
+          id: screen
+          width: plate.screenWidth
+          height: plate.screenHeight
+          anchors.centerIn: parent
+          anchors.verticalCenterOffset: -Math.round(Style.font.body * 0.2)
+          // Aside for the dots, when it has windows.
+          radius: Math.round(height * 0.2)
+          color: root.ink
+        }
+        Rectangle {
+          width: Math.max(2, Math.round(Style.font.body * 0.14))
+          height: plate.stem
+          anchors.horizontalCenter: screen.horizontalCenter
+          anchors.top: screen.bottom
+          color: screen.color
+        }
+        Rectangle {
+          width: Math.round(plate.screenWidth * 0.42)
+          height: plate.stem
+          radius: height / 2
+          anchors.horizontalCenter: screen.horizontalCenter
+          anchors.top: screen.bottom
+          anchors.topMargin: plate.stem
+          color: screen.color
+        }
+      }
+      Item {
+        id: hole
+        anchors.fill: parent
+        visible: false
+        layer.enabled: true
+        Text {
+          text: plate.label
+          font.family: root.bar ? root.bar.fontFamily : Style.font.family
+          font.pixelSize: Math.round(Style.font.body * 0.95)
+          font.bold: true
+          color: "black"
+          x: screen.x + (screen.width - width) / 2
+          y: screen.y + (screen.height - height) / 2
+        }
+      }
+      MultiEffect {
+        anchors.fill: parent
+        source: shape
+        maskEnabled: true
+        maskSource: hole
+        maskInverted: true
+        maskThresholdMin: 0.4
+        maskSpreadAtMin: 0.3
+        // Full under the number's own brightness; brighter still where
+        // the mouse is.
+        opacity: plate.parent.mouseHere ? 0.85 : 0.75
+      }
+    }
+
   }
 
+  readonly property color ink: root.bar ? root.bar.barForeground : Color.foreground
 
-  GridLayout {
-    id: grid
-    anchors.fill: parent
-    anchors.rightMargin: root.trailingGap
-    columns: root.vertical ? 1 : root.workspaceIds().length
-    columnSpacing: root.vertical ? 0 : root.gap
-    rowSpacing: root.vertical ? root.gap : 0
+  Grid {
+    id: strip
+    anchors.left: parent.left
+    anchors.top: parent.top
+    flow: root.vertical ? Grid.TopToBottom : Grid.LeftToRight
+    columns: root.vertical ? 1 : 0
+    rows: root.vertical ? 0 : 1
+    spacing: root.trayGap
+    verticalItemAlignment: Grid.AlignVCenter
+    horizontalItemAlignment: Grid.AlignHCenter
 
+    // A tray for each display: its icon, a lock if it is locked, and the
+    // numbers it holds. This bar's own display's tray is the brighter one
+    // (2026-11-27: "an entire overhaul of workspace management and grouping",
+    // to make "more clear which workspaces belong to which monitors").
     Repeater {
-      id: numbers
-      model: root.workspaceIds()
+      model: root.layout.trays
 
-      WidgetButton {
-        required property int modelData
+      Item {
+        id: trayItem
+        required property var modelData
+        readonly property var tray: modelData
+        implicitWidth: root.vertical ? root.barSize : trayRow.implicitWidth + 2 * root.trayPad
+        implicitHeight: root.vertical ? trayRow.implicitHeight + 2 * root.trayPad : root.barSize
+        width: implicitWidth
+        height: implicitHeight
 
-        readonly property var workspace: root.workspaceById(modelData)
-        readonly property bool occupied: workspace !== null && workspace.toplevels.values.length > 0
-        readonly property bool focused: root.current !== null && root.current.id === modelData
-        // Some display shows it now.
-        readonly property bool shown: root.shownIds.indexOf(modelData) !== -1
-
-        readonly property bool blinking: root.blinkId === modelData
-        // Lit on even steps: full, a little larger and in the attention colour;
-        // between them, all but gone. A theme whose attention colour is its
-        // text colour still shows the flashes.
-        readonly property bool lit: blinking && root.blinkStep % 2 === 0
-
-        readonly property int slot: root.slotOf(modelData)
-
-        bar: root.bar
-        text: slot === root.slots ? "0" : String(slot)
-        active: lit
-        readonly property bool mouseHere: root.mouseWorkspace !== null && root.mouseWorkspace.id === modelData
-        opacity: blinking ? (lit ? 1 : 0.15) : (mouseHere ? 1 : shown ? 0.8 : occupied ? 0.6 : 0.3)
-        Behavior on opacity {
-          enabled: !blinking
-          NumberAnimation { duration: V.Look.ms(160) }
-        }
-        scale: lit ? 1.25 : 1
-        Behavior on scale {
-          NumberAnimation { duration: V.Look.ms(110); easing.type: Easing.OutQuad }
-        }
-        horizontalMargin: 6
-        verticalPadding: 6
-        fixedWidth: root.vertical ? root.barSize : root.cellFor(modelData)
-        labelVisible: !lockedHere
-        fixedHeight: root.vertical ? root.cell : root.barSize
-        // A right click locks this display to it, or frees it, where the
-        // Hyprland side has locks.
-        onPressed: function(button) {
-          if (button === Qt.RightButton && root.locksKnown) root.toggleLock(modelData)
-          else root.focusWorkspace(modelData)
-        }
-
-        // Under the number, a little map of the displays, one segment for
-        // each, left to right as they stand; the segment of the display it is
-        // on is lit: solid when it has windows, hollow when it is there but
-        // empty. An unused one has no map at all (2026-11-27: "more clear which
-        // workspaces have apps and which are merely blank, and unused", and
-        // "which workspaces belong to which monitors").
-        readonly property int monitorIndex: workspace !== null && workspace.monitor
-                                            ? root.monitorOrder.indexOf(String(workspace.monitor.name)) : -1
-        Row {
-          id: map
-          visible: !parent.lockedHere && parent.monitorIndex >= 0
-          readonly property real segment: Math.max(5, Math.round(Style.font.body * 0.45))
-          readonly property real thick: Math.max(4, Math.round(Style.font.body * 0.3))
-          spacing: Math.max(1, Math.round(Style.font.body * 0.12))
-          anchors.horizontalCenter: parent.horizontalCenter
-          y: parent.height / 2 + Math.round(Style.font.body * 0.6)
-          Repeater {
-            model: root.monitorOrder.length
-            Rectangle {
-              required property int index
-              readonly property bool here: index === map.parent.monitorIndex
-              width: map.segment
-              height: map.thick
-              radius: Math.min(2, height / 2)
-              color: here && map.parent.occupied ? map.parent.lockInk : "transparent"
-              border.width: here && !map.parent.occupied ? 1 : 0
-              border.color: map.parent.lockInk
-              Rectangle {
-                visible: !parent.here
-                anchors.centerIn: parent
-                width: parent.width
-                height: 1
-                color: map.parent.lockInk
-                opacity: 0.35
-              }
-            }
-          }
-        }
-
-        // A locked one is its display already: a dot beside its little screen
-        // says it has windows.
         Rectangle {
-          visible: parent.lockedHere && parent.occupied && !root.vertical
-          readonly property real size: Math.max(3, Math.round(Style.font.body * 0.32))
-          width: size
-          height: size
-          radius: size / 2
-          color: parent.lockInk
-          x: (parent.width + plate.screenWidth - root.pipRoom) / 2 + Math.round(Style.font.body * 0.3)
-          y: (parent.height - height) / 2 - Math.round(Style.font.body * 0.2)
+          anchors.centerIn: parent
+          readonly property real slim: selector.thickness + Style.space(2)
+          width: root.vertical ? Math.min(parent.width - Style.space(6), slim) : parent.width
+          height: root.vertical ? parent.height : Math.min(parent.height - Style.space(10), slim)
+          radius: Math.min(width, height) / 2
+          color: Qt.rgba(root.ink.r, root.ink.g, root.ink.b, trayItem.tray.here ? 0.16 : 0.06)
+          border.width: 1
+          border.color: Qt.rgba(root.ink.r, root.ink.g, root.ink.b, trayItem.tray.here ? 0.35 : 0.14)
         }
 
-        readonly property bool lockedHere: root.lockedIds.indexOf(modelData) !== -1
-        readonly property color lockInk: root.bar ? root.bar.barForeground : Color.foreground
-        // A locked one is a little display: a filled screen on a stand, its
-        // number cut out of the screen so the bar shows through it.
-        Item {
-          id: plate
-          visible: parent.lockedHere
-          anchors.fill: parent
-          readonly property string label: parent.text
-          readonly property real screenHeight: Math.round(Style.font.body * 1.3)
-          readonly property real screenWidth: Math.round(screenHeight * 1.5)
-          readonly property real stem: Math.max(2, Math.round(Style.font.body * 0.16))
+        Grid {
+          id: trayRow
+          anchors.centerIn: parent
+          flow: root.vertical ? Grid.TopToBottom : Grid.LeftToRight
+          columns: root.vertical ? 1 : 0
+          rows: root.vertical ? 0 : 1
+          spacing: root.gap
+          verticalItemAlignment: Grid.AlignVCenter
+          horizontalItemAlignment: Grid.AlignHCenter
 
-          Item {
-            id: shape
-            anchors.fill: parent
-            visible: false
-            layer.enabled: true
-            Rectangle {
-              id: screen
-              width: plate.screenWidth
-              height: plate.screenHeight
-              anchors.centerIn: parent
-              anchors.verticalCenterOffset: -Math.round(Style.font.body * 0.2)
-              // Aside for the dots, when it has windows.
-              anchors.horizontalCenterOffset: plate.parent.occupied && !root.vertical ? -root.pipRoom / 2 : 0
-              radius: Math.round(height * 0.2)
-              color: parent.parent.parent.lockInk
-            }
-            Rectangle {
-              width: Math.max(2, Math.round(Style.font.body * 0.14))
-              height: plate.stem
-              anchors.horizontalCenter: screen.horizontalCenter
-              anchors.top: screen.bottom
-              color: screen.color
-            }
-            Rectangle {
-              width: Math.round(plate.screenWidth * 0.42)
-              height: plate.stem
-              radius: height / 2
-              anchors.horizontalCenter: screen.horizontalCenter
-              anchors.top: screen.bottom
-              anchors.topMargin: plate.stem
-              color: screen.color
+          // The display: a click goes to it.
+          WidgetButton {
+            bar: root.bar
+            text: root.displayGlyph(trayItem.tray.kind)
+            centerFigures: false
+            foreground: root.ink
+            opacity: trayItem.tray.here ? 1 : 0.6
+            horizontalMargin: 4
+            verticalPadding: 6
+            fixedHeight: root.vertical ? -1 : root.barSize
+            tooltipText: trayItem.tray.monitor + (trayItem.tray.here ? " (this display)" : "")
+                         + (trayItem.tray.locked ? ", locked to what it shows" : "")
+            onPressed: function(button) {
+              root.dispatch("hl.dsp.focus({ monitor = " + JSON.stringify(trayItem.tray.monitor) + " })")
             }
           }
-          Item {
-            id: hole
-            anchors.fill: parent
-            visible: false
-            layer.enabled: true
-            Text {
-              text: plate.label
-              font.family: root.bar ? root.bar.fontFamily : Style.font.family
-              font.pixelSize: Math.round(Style.font.body * 0.95)
-              font.bold: true
-              color: "black"
-              x: screen.x + (screen.width - width) / 2
-              y: screen.y + (screen.height - height) / 2
+
+          Repeater {
+            model: trayItem.tray.ids
+            WorkspaceNumber {
+              required property int modelData
+              workspaceId: modelData
+              tray: trayItem.tray
             }
-          }
-          MultiEffect {
-            anchors.fill: parent
-            source: shape
-            maskEnabled: true
-            maskSource: hole
-            maskInverted: true
-            maskThresholdMin: 0.4
-            maskSpreadAtMin: 0.3
-            // Full under the number's own brightness; brighter still where
-            // the mouse is.
-            opacity: plate.parent.mouseHere ? 0.85 : 0.75
           }
         }
+      }
+    }
 
+    // The numbers no display holds, apart from the trays.
+    Grid {
+      visible: root.layout.free.length > 0
+      flow: root.vertical ? Grid.TopToBottom : Grid.LeftToRight
+      columns: root.vertical ? 1 : 0
+      rows: root.vertical ? 0 : 1
+      spacing: root.gap
+      Repeater {
+        model: root.layout.free
+        WorkspaceNumber {
+          required property int modelData
+          workspaceId: modelData
+        }
       }
     }
   }
