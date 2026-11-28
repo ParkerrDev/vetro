@@ -18,23 +18,16 @@ import "../vetro.lib" as V
 // the center", "I would rather it look like a pane of glass", "I don't like how
 // it follows and moves with the mouse", "it only wiggles horizontally").
 //
-// The numbers are Omarchy's: each display has workspaces 1 to 10 of its own,
-// a block of ten Hyprland numbers, and its bar shows the first five of them
-// and any of the rest that exist, dimmer when empty, then any workspace only
-// visiting from a display that was unplugged. Which block is whose comes from
-// the file Omarchy keeps (default/hypr/monitor-workspaces.lua), so a Hyprland
-// setup that numbers workspaces another way and keeps that file to match
-// (shared-workspaces, one set for every display) is shown as it numbers them.
-// Pressing a number goes to it, through o.workspaces.focus as Omarchy's own
-// keys do. The pane on each bar marks the workspace that bar's monitor shows;
-// its number remains visible.
+// The numbers are Omarchy's: each display's block of ten, from the file
+// Omarchy keeps (default/hypr/monitor-workspaces.lua), the first five always
+// and the rest while they exist. Pressing one goes to it through
+// o.workspaces.focus, as Omarchy's keys do. The pane marks the workspace this
+// bar's display shows.
 //
-// Locks, when the Hyprland side has them: a setup that can lock a display to
-// its workspace and keeps the locks in $XDG_RUNTIME_DIR/hypr-workspace-locks
-// (shared-workspaces does) has a locked number drawn as a little display with
-// its number cut out of the screen, and room of its own, and a right click on
-// a number calls its o.workspaces.toggle_lock. Without that file there are no
-// locks, and a right click is a click.
+// Where the Hyprland side keeps locks in $XDG_RUNTIME_DIR/hypr-workspace-locks
+// (shared-workspaces does), a locked number is a little display with its
+// number cut out, a right click locks or frees, and the pane stays off a
+// locked number: the display already says it is shown.
 //
 // A button beside the numbers that stands for a workspace of its own is one
 // more place for the pane to go: it slides over to that button when the
@@ -153,34 +146,17 @@ BarWidget {
     return shown && shown.id > 0 ? root.blockOf(shown.id) : 0
   }
 
-  // The first five of this display's own, and any of the rest that exist;
-  // after them, the workspaces only visiting it.
+  // The first five of this display's own, and any of the rest that exist.
   function workspaceIds() {
     var base = root.block * root.slots
     var ids = [base + 1, base + 2, base + 3, base + 4, base + 5]
-    var guests = []
     var values = Hyprland.workspaces.values
-
     for (var i = 0; i < values.length && i < 128; i++) {
       var id = values[i].id
-      if (id <= 0) continue
-      if (root.blockOf(id) === root.block) {
-        if (ids.indexOf(id) === -1) ids.push(id)
-      } else if (values[i].monitor && values[i].monitor.name === root.monitorName) {
-        guests.push(id)
-      }
+      if (id > 0 && root.blockOf(id) === root.block && ids.indexOf(id) === -1) ids.push(id)
     }
-
-    ids.sort(function(left, right) { return left - right })
-    guests.sort(function(left, right) { return left - right })
-    return ids.concat(guests)
+    return ids.sort(function(left, right) { return left - right })
   }
-
-  // The first visiting one stands apart from the display's own.
-  function firstGuest(ids, index) {
-    return index > 0 && root.blockOf(ids[index]) !== root.block && root.blockOf(ids[index - 1]) === root.block
-  }
-  readonly property real guestGap: Style.space(6)
 
   // Displays locked to a workspace, from the Hyprland side's file, one
   // "MONITOR ID" a line (see the top). The file being there at all says
@@ -230,10 +206,7 @@ BarWidget {
   }
 
   function focusWorkspace(id) {
-    if (root.blockOf(id) === root.block)
-      root.dispatch("o.workspaces.focus(" + root.slotOf(id) + ", " + JSON.stringify(root.monitorName) + ")")
-    else
-      root.dispatch("hl.dsp.focus({ workspace = \"" + id + "\" })")
+    root.dispatch("o.workspaces.focus(" + root.slotOf(id) + ", " + JSON.stringify(root.monitorName) + ")")
   }
 
   // Quickshell credits every workspace switch to the focused monitor, and
@@ -334,8 +307,10 @@ BarWidget {
   }
   // The neighbour whose workspace is marked, if one is.
   readonly property var focusedStop: root.stopFor(root.current)
-  // With the focus on a workspace that has no button, the selector is put away.
-  readonly property bool pointing: focusedStop !== null || focusedIndex >= 0
+  // With the focus on a workspace that has no button, or on a locked one, the
+  // pane is put away.
+  readonly property bool pointing: focusedStop !== null
+    || (focusedIndex >= 0 && root.lockedIds.indexOf(root.current.id) === -1)
 
   // Where the selector belongs: the middle of the focused workspace's button,
   // along the bar, measured from the host's place. Every number has the same
@@ -365,9 +340,6 @@ BarWidget {
     if (index < 0) return NaN
     var before = 0
     for (var i = 0; i < index && i < 64; i++) before += root.cellFor(ids[i]) + root.gap
-    for (var g = 1; !root.vertical && g <= index && g < 64; g++) {
-      if (root.firstGuest(ids, g)) before += root.guestGap
-    }
     return root.along(root.placeOf(root)) + before + root.cellFor(focused.id) / 2 - origin
   }
 
@@ -526,10 +498,7 @@ BarWidget {
         // text colour still shows the flashes.
         readonly property bool lit: blinking && root.blinkStep % 2 === 0
 
-        required property int index
         readonly property int slot: root.slotOf(modelData)
-        Layout.leftMargin: !root.vertical && root.firstGuest(root.workspaceIds(), index) ? root.guestGap : 0
-        Layout.topMargin: root.vertical && root.firstGuest(root.workspaceIds(), index) ? root.guestGap : 0
 
         bar: root.bar
         text: slot === root.slots ? "0" : String(slot)
