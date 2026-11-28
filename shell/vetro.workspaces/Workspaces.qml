@@ -703,10 +703,6 @@ BarWidget {
       Item {
         id: shape
         anchors.fill: parent
-        visible: false
-        layer.enabled: true
-        layer.smooth: true
-        layer.textureSize: plate.sharp
         Rectangle {
           id: screen
           width: plate.screenWidth
@@ -736,10 +732,6 @@ BarWidget {
       Item {
         id: hole
         anchors.fill: parent
-        visible: false
-        layer.enabled: true
-        layer.smooth: true
-        layer.textureSize: plate.sharp
         Text {
           text: plate.label
           font.family: root.bar ? root.bar.fontFamily : Style.font.family
@@ -747,7 +739,7 @@ BarWidget {
           font.bold: true
           color: "black"
           // Aside, to make room for the dot, when it has windows.
-          x: screen.x + (screen.width - width) / 2 - (dot.visible ? dot.width * 0.9 : 0)
+          x: screen.x + (screen.width - width) / 2 - (number.occupied ? dot.width * 0.9 : 0)
           y: screen.y + (screen.height - height) / 2
         }
         // A dot cut beside the number says the display has windows on it
@@ -755,20 +747,44 @@ BarWidget {
         // inside their screen icon").
         Rectangle {
           id: dot
-          visible: number.occupied
           width: Math.max(3, Math.round(Style.font.body * 0.26))
           height: width
           radius: width / 2
-          color: "black"
+          color: number.occupied ? "black" : "transparent"
           x: screen.x + screen.width - width - Math.round(screen.height * 0.28)
           y: screen.y + (screen.height - height) / 2
         }
       }
+      // The screen and its cut-out, each taken as a picture the effect reads.
+      // They are live sources that hide what they take: a hidden item with
+      // layer.enabled was never drawn again, so a dot that came or went
+      // after the first frame never showed (2026-11-27: "if i take it away
+      // and put it back it is still stale").
+      ShaderEffectSource {
+        id: shapeSource
+        anchors.fill: parent
+        visible: false
+        sourceItem: shape
+        hideSource: true
+        live: true
+        smooth: true
+        textureSize: plate.sharp
+      }
+      ShaderEffectSource {
+        id: holeSource
+        anchors.fill: parent
+        visible: false
+        sourceItem: hole
+        hideSource: true
+        live: true
+        smooth: true
+        textureSize: plate.sharp
+      }
       MultiEffect {
         anchors.fill: parent
-        source: shape
+        source: shapeSource
         maskEnabled: true
-        maskSource: hole
+        maskSource: holeSource
         maskInverted: true
         // The cut follows the text's own soft edge, not a hard threshold.
         maskThresholdMin: 0.5
