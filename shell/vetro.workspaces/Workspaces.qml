@@ -336,6 +336,28 @@ BarWidget {
     fragmentShader: Qt.resolvedUrl("pane.frag.qsb")
   }
 
+  // Which monitor the mouse is on: the pane on that monitor's bar gets an
+  // outline in the accent colour (2026-11-27: "another indicator so I know
+  // which workspace my mouse is on"). Hyprland's focus follows the mouse.
+  readonly property bool mouseHere: root.monitor !== null && Hyprland.focusedMonitor === root.monitor
+  Rectangle {
+    parent: root.host
+    z: 0
+    visible: selector.visible
+    x: selector.x
+    y: selector.y
+    width: selector.width
+    height: selector.height
+    radius: selector.radius
+    color: "transparent"
+    border.width: 1.5
+    border.color: Color.accent
+    opacity: root.mouseHere ? 1 : 0
+    Behavior on opacity {
+      NumberAnimation { duration: V.Look.ms(140); easing.type: Easing.OutQuad }
+    }
+  }
+
   GridLayout {
     id: grid
     anchors.fill: parent
