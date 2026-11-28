@@ -32,7 +32,12 @@ import "../vetro.lib" as V
 //   workspaceName  the name of the workspace it stands for
 //   marked         (optional) set here while the pane is on it, so that
 //                  it can leave the marking to the pane
-// passthru's Windows button is one. Without any, the numbers are all there is.
+// passthru's Windows button is one. A widget with several workspaces of its
+// own says so instead with these:
+//   workspaceNames  the names of the workspaces it stands for
+//   spotOf(name)    (optional) where along the bar, from the widget's own
+//                   start, that one's button stands; its middle if absent
+// agent-workspace's robot is one. Without any, the numbers are all there is.
 //
 // A number blinks when asked (`omarchy-shell vetro.workspaces blink N`):
 // three flashes in the bar's attention colour. vetro-focus-or-open asks when
@@ -213,7 +218,9 @@ BarWidget {
     for (var i = 0; i < places.length && i < 64; i++) {
       var widget = places[i].activeItem
       if (!widget) continue
-      var stop = widget !== root && widget.visible && typeof widget.workspaceName === "string" && widget.workspaceName !== ""
+      var names = widget.workspaceNames
+      var stop = widget !== root && widget.visible
+        && ((typeof widget.workspaceName === "string" && widget.workspaceName !== "") || (names && names.length > 0))
       if (stop) found.stops.push(widget)
       if (first && (stop || widget === root)) {
         found.host = widget
@@ -227,7 +234,9 @@ BarWidget {
 
   function stopFor(workspace) {
     for (var i = 0; workspace !== null && i < root.stops.length; i++) {
-      if (root.stops[i].workspaceName === workspace.name) return root.stops[i]
+      var each = root.stops[i]
+      if (each.workspaceName === workspace.name) return each
+      if (each.workspaceNames && each.workspaceNames.indexOf(workspace.name) !== -1) return each
     }
 
     return null
@@ -265,6 +274,10 @@ BarWidget {
     var stop = root.stopFor(focused)
     if (stop !== null) {
       var place = root.placeOf(stop)
+      if (!root.vertical && typeof stop.spotOf === "function") {
+        var at = stop.spotOf(focused.name)
+        if (!isNaN(at)) return root.along(place) + at - origin
+      }
       return root.along(place) + root.extent(place) / 2 - origin
     }
 
