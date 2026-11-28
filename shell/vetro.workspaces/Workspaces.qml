@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Io
 import qs.Commons
@@ -16,10 +17,11 @@ import "../vetro.lib" as V
 // the center", "I would rather it look like a pane of glass", "I don't like how
 // it follows and moves with the mouse", "it only wiggles horizontally").
 //
-// The numbers are Omarchy's: 1 to 5 always, any other workspace up to 10
-// while it exists, dimmer when empty, and a press goes there. The focused
-// one keeps its number (Omarchy shows a dot in its place), since the pane
-// now says which it is.
+// The numbers are Hyprland's global workspaces. Every bar shows the same set:
+// 1 to 5 always, plus any other numbered workspace that exists, dimmer when
+// empty. Pressing one focuses that workspace wherever it is shown. The pane
+// on each bar marks the workspace that bar's monitor shows; its number
+// remains visible.
 //
 // A button beside the numbers that stands for a workspace of its own is one
 // more place for the pane to go: it slides over to that button when the
@@ -82,22 +84,54 @@ BarWidget {
     return null
   }
 
+  // The monitor this bar is on.
+  readonly property var monitor: {
+    var window = root.QsWindow.window
+    var screen = window ? window.screen : null
+    return screen ? Hyprland.monitorFor(screen) : Hyprland.focusedMonitor
+  }
+
+  // The workspace this monitor shows.
+  readonly property var shownWorkspace: root.monitor ? root.monitor.activeWorkspace : Hyprland.focusedWorkspace
+
+  // Show the first five global workspaces, then every other numeric workspace
+  // that exists, on every monitor's bar.
   function workspaceIds() {
     var ids = [1, 2, 3, 4, 5]
     var values = Hyprland.workspaces.values
 
     for (var i = 0; i < values.length; i++) {
       var id = values[i].id
-      if (id > 0 && id <= 10 && ids.indexOf(id) === -1) ids.push(id)
+      if (id <= 0) continue
+      if (ids.indexOf(id) === -1) ids.push(id)
     }
 
     ids.sort(function(left, right) { return left - right })
     return ids
   }
 
+  function dispatch(expression) {
+    if (root.bar) root.bar.run("hyprctl dispatch " + Util.shellQuote(expression))
+  }
+
   function focusWorkspace(id) {
-    if (!root.bar) return
-    root.bar.run("hyprctl dispatch " + Util.shellQuote("hl.dsp.focus({ workspace = \"" + id + "\" })"))
+    root.dispatch("o.workspaces.focus(" + id + (root.monitor ? ", " + JSON.stringify(root.monitor.name) : "") + ")")
+  }
+
+  // Quickshell credits every workspace switch to the focused monitor, and
+  // misses a workspace that changes number or moves between monitors, so ask
+  // Hyprland for the truth then. Every bar shares what Hyprland answers, so
+  // one asks after a plain switch.
+  Connections {
+    target: Hyprland
+    function onRawEvent(event) {
+      var name = event ? String(event.name) : ""
+      var switched = name === "workspacev2" && root.monitor !== null && root.monitor.focused
+      if (switched || name === "moveworkspacev2" || name === "changeworkspaceid") {
+        Hyprland.refreshMonitors()
+        Hyprland.refreshWorkspaces()
+      }
+    }
   }
 
   readonly property real trailingGap: root.vertical ? 0 : Style.spaceReal(1.5)
@@ -159,14 +193,19 @@ BarWidget {
     return null
   }
 
-  // Where the focused number is among those shown: -1 when the focus is on a
-  // workspace that has no number here (a special one, or a neighbour's).
+  // The workspace the pane marks: the one this bar's monitor shows, so each
+  // monitor's bar marks its own workspace (2026-11-27: "each monitor should
+  // have the current workspace it is on selected").
+  readonly property var current: root.shownWorkspace
+
+  // Where the marked number is among those shown: -1 when it has no number
+  // here (a special one, or a neighbour's).
   readonly property int focusedIndex: {
-    var focused = Hyprland.focusedWorkspace
+    var focused = root.current
     return focused === null ? -1 : root.workspaceIds().indexOf(focused.id)
   }
-  // The neighbour whose workspace has the focus, if one has.
-  readonly property var focusedStop: root.stopFor(Hyprland.focusedWorkspace)
+  // The neighbour whose workspace is marked, if one is.
+  readonly property var focusedStop: root.stopFor(root.current)
   // With the focus on a workspace that has no button, the selector is put away.
   readonly property bool pointing: focusedStop !== null || focusedIndex >= 0
 
@@ -176,7 +215,7 @@ BarWidget {
   // neighbour's is where the bar has put it. Not a number, with the focus on
   // a workspace that has no button.
   function spot() {
-    var focused = Hyprland.focusedWorkspace
+    var focused = root.current
     if (focused === null) return NaN
     var origin = root.along(root.placeOf(root.host))
     var stop = root.stopFor(focused)
@@ -185,7 +224,8 @@ BarWidget {
       return root.along(place) + root.extent(place) / 2 - origin
     }
 
-    var index = root.workspaceIds().indexOf(focused.id)
+    var ids = root.workspaceIds()
+    var index = ids.indexOf(focused.id)
     if (index < 0) return NaN
     return root.along(root.placeOf(root)) + index * (root.cell + root.gap) + root.cell / 2 - origin
   }
@@ -232,7 +272,7 @@ BarWidget {
   // another workspace, at once when the bar has only moved the button. With
   // the same workspace in the same place there is nothing to do.
   function follow() {
-    var focused = Hyprland.focusedWorkspace
+    var focused = root.current
     var at = root.spot()
     root.tell(isNaN(at) ? null : root.stopFor(focused))
     if (isNaN(at)) return
@@ -313,7 +353,7 @@ BarWidget {
 
         readonly property var workspace: root.workspaceById(modelData)
         readonly property bool occupied: workspace !== null && workspace.toplevels.values.length > 0
-        readonly property bool focused: Hyprland.focusedWorkspace !== null && Hyprland.focusedWorkspace.id === modelData
+        readonly property bool focused: root.current !== null && root.current.id === modelData
 
         readonly property bool blinking: root.blinkId === modelData
         // Lit on even steps: full, a little larger and in the attention colour;
