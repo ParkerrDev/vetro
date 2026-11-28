@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Effects
 import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Io
@@ -21,7 +22,8 @@ import "../vetro.lib" as V
 // 1 to 5 always, plus any other numbered workspace that exists, dimmer when
 // empty. Pressing one focuses that workspace wherever it is shown; a right
 // click locks the display that shows it to it, or frees it (a locked one
-// stands on a faint monitor icon, with room of its own). The pane
+// is a little display with its number cut out of the screen, and room of
+// its own). The pane
 // on each bar marks the workspace that bar's monitor shows; its number
 // remains visible.
 //
@@ -485,6 +487,7 @@ BarWidget {
         horizontalMargin: 6
         verticalPadding: 6
         fixedWidth: root.vertical ? root.barSize : root.cellFor(modelData)
+        labelVisible: !lockedHere
         fixedHeight: root.vertical ? root.cell : root.barSize
         // A right click locks this display to it, or frees it.
         onPressed: function(button) {
@@ -494,17 +497,73 @@ BarWidget {
 
         readonly property bool lockedHere: root.lockedIds.indexOf(modelData) !== -1
         readonly property color lockInk: root.bar ? root.bar.barForeground : Color.foreground
-        // A locked one stands on a display: nf-md-monitor, large and faint,
-        // behind the number, in the bar's text colour.
-        Text {
-          z: -1
+        // A locked one is a little display: a filled screen on a stand, its
+        // number cut out of the screen so the bar shows through it.
+        Item {
+          id: plate
           visible: parent.lockedHere
-          text: "\u{f0379}"
-          font.family: root.bar ? root.bar.fontFamily : Style.font.family
-          font.pixelSize: Math.round(Style.font.body * 2.1)
-          color: Qt.alpha(parent.lockInk, 0.28)
-          anchors.centerIn: parent
-          anchors.verticalCenterOffset: Math.round(Style.font.body * 0.1)
+          anchors.fill: parent
+          readonly property string label: parent.text
+          readonly property real screenHeight: Math.round(Style.font.body * 1.3)
+          readonly property real screenWidth: Math.round(screenHeight * 1.5)
+          readonly property real stem: Math.max(2, Math.round(Style.font.body * 0.16))
+
+          Item {
+            id: shape
+            anchors.fill: parent
+            visible: false
+            layer.enabled: true
+            Rectangle {
+              id: screen
+              width: plate.screenWidth
+              height: plate.screenHeight
+              anchors.centerIn: parent
+              anchors.verticalCenterOffset: -Math.round(Style.font.body * 0.2)
+              radius: Math.round(height * 0.2)
+              color: parent.parent.parent.lockInk
+            }
+            Rectangle {
+              width: Math.max(2, Math.round(Style.font.body * 0.14))
+              height: plate.stem
+              anchors.horizontalCenter: parent.horizontalCenter
+              anchors.top: screen.bottom
+              color: screen.color
+            }
+            Rectangle {
+              width: Math.round(plate.screenWidth * 0.42)
+              height: plate.stem
+              radius: height / 2
+              anchors.horizontalCenter: parent.horizontalCenter
+              anchors.top: screen.bottom
+              anchors.topMargin: plate.stem
+              color: screen.color
+            }
+          }
+          Item {
+            id: hole
+            anchors.fill: parent
+            visible: false
+            layer.enabled: true
+            Text {
+              text: plate.label
+              font.family: root.bar ? root.bar.fontFamily : Style.font.family
+              font.pixelSize: Math.round(Style.font.body * 0.95)
+              font.bold: true
+              color: "black"
+              x: screen.x + (screen.width - width) / 2
+              y: screen.y + (screen.height - height) / 2
+            }
+          }
+          MultiEffect {
+            anchors.fill: parent
+            source: shape
+            maskEnabled: true
+            maskSource: hole
+            maskInverted: true
+            maskThresholdMin: 0.4
+            maskSpreadAtMin: 0.3
+            opacity: 0.6
+          }
         }
 
       }
