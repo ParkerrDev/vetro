@@ -237,7 +237,27 @@ BarWidget {
         Hyprland.refreshMonitors()
         Hyprland.refreshWorkspaces()
       }
+      // Quickshell can lose track of which workspace a window is on (one
+      // moved to a headless display, say), so a window's coming, going or
+      // moving asks Hyprland for each workspace's count too (2026-11-27:
+      // "the icons are not getting dots even though I put windows on them").
+      if (name === "openwindow" || name === "closewindow" || name === "movewindowv2")
+        recount.restart()
     }
+  }
+  Timer {
+    id: recount
+    interval: 120
+    onTriggered: Hyprland.refreshWorkspaces()
+  }
+
+  // Whether a workspace has windows: by Quickshell's count, or by Hyprland's
+  // own, whichever sees one.
+  function hasWindows(workspace) {
+    if (!workspace) return false
+    if (workspace.toplevels.values.length > 0) return true
+    var ipc = workspace.lastIpcObject
+    return ipc !== null && ipc !== undefined && Number(ipc.windows) > 0
   }
 
   readonly property real trailingGap: root.vertical ? 0 : Style.spaceReal(1.5)
@@ -607,7 +627,7 @@ BarWidget {
     property bool inTray: tray !== null
 
     readonly property var workspace: root.workspaceById(workspaceId)
-    readonly property bool occupied: workspace !== null && workspace.toplevels.values.length > 0
+    readonly property bool occupied: root.hasWindows(workspace)
     // Its display shows it now.
     readonly property bool shown: inTray && tray.shown === workspaceId
     readonly property bool mouseHere: root.mouseWorkspace !== null && root.mouseWorkspace.id === workspaceId
@@ -896,7 +916,7 @@ BarWidget {
       for (var i = 0; i < all.length && i < 128; i++) if (String(all[i].name) === name) return all[i]
       return null
     }
-    readonly property bool occupied: workspace !== null && workspace.toplevels.values.length > 0
+    readonly property bool occupied: root.hasWindows(workspace)
     readonly property real middle: {
       var at = root.vertical ? y + height / 2 : x + width / 2
       for (var item = parent; item && item !== root && item !== null; item = item.parent)
