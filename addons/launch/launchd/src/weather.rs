@@ -61,7 +61,8 @@ pub struct Place {
     pub label: String,
 }
 
-/// A WMO weather code in words, and as a Material Symbols icon.
+/// A WMO weather code in words, and an icon name (Material Symbols' name; the
+/// cards draw it as Omarchy's weather glyph).
 #[must_use]
 pub fn describe(code: i64, day: bool) -> (&'static str, &'static str) {
     let clear = if day { "sunny" } else { "clear_night" };

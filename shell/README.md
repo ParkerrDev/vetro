@@ -67,5 +67,8 @@ screens.only, .except    the screens the toasts and the capsule go to, by name
 The panels move at the glass's pace, as the windows do: `vetro tune`, Motion,
 Pace, once it is applied.
 
-`fonts/` is D-DIN, which the whole shell is set in, and the Material Symbols icon
-fonts; `install.sh` links it to `~/.local/share/fonts/vetro`.
+The shell is set in Omarchy's own font (the `monospace` that `omarchy font set`
+points at, JetBrainsMono Nerd Font as it ships), and its icons are that font's
+Nerd Font glyphs, the ones Omarchy draws itself (`vetro.lib/Look.qml`). `fonts/`
+is kept for the branding render (`assets/branding/render.py`); nothing in the
+shell loads it.

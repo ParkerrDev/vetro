@@ -169,7 +169,7 @@ Item {
         Icon {
           anchors.centerIn: parent
           visible: card.picture === ""
-          text: "notifications"
+          name: "notifications"
           size: 22
           filled: true
         }
@@ -215,7 +215,7 @@ Item {
 
               Icon {
                 anchors.centerIn: parent
-                text: "close"
+                name: "close"
                 size: 14
               }
               HoverHandler {

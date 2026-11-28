@@ -3,13 +3,14 @@ pragma Singleton
 import QtQuick
 
 // The launch look, as the desktop's launch/Style.qml has it: pure white
-// type and hairlines on black glass, set in D-DIN. A plain QtObject here,
-// since the login screen runs in SDDM, not Quickshell. The fonts load from
-// the theme folder: the sddm user can't see the ones in your home.
+// type and hairlines on black glass, set in Omarchy's font. A plain QtObject
+// here, since the login screen runs in SDDM, not Quickshell. The sddm user
+// can't see your home's fonts or `omarchy font set`, so this names the font
+// Omarchy installs for everyone, as Omarchy's own login screen does; its Nerd
+// Font glyphs are the icons.
 QtObject {
-  readonly property string family: din.status === FontLoader.Ready ? din.font.family : "sans-serif"
-  // The extended cut, for the few big numbers.
-  readonly property string wide: dinExp.status === FontLoader.Ready ? dinExp.font.family : family
+  readonly property string family: "JetBrainsMono Nerd Font"
+  readonly property string wide: family
 
   readonly property color text: "#ffffff"
   readonly property color dim: Qt.rgba(1, 1, 1, 0.72)
@@ -22,21 +23,4 @@ QtObject {
 
   // Letter spacing for small capitals, in pixels per point of type.
   readonly property real capsTracking: 0.22
-
-  property FontLoader din: FontLoader {
-    source: Qt.resolvedUrl("fonts/D-DIN.otf")
-  }
-  property FontLoader dinBold: FontLoader {
-    source: Qt.resolvedUrl("fonts/D-DIN-Bold.otf")
-  }
-  property FontLoader dinExp: FontLoader {
-    source: Qt.resolvedUrl("fonts/D-DINExp.otf")
-  }
-  property FontLoader dinExpBold: FontLoader {
-    source: Qt.resolvedUrl("fonts/D-DINExp-Bold.otf")
-  }
-  // The icons are a font too ("Material Symbols Rounded")
-  property FontLoader symbols: FontLoader {
-    source: Qt.resolvedUrl("fonts/MaterialSymbolsRounded.ttf")
-  }
 }

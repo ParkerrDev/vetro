@@ -307,9 +307,9 @@ Item {
 
         Text {
           anchors.centerIn: parent
-          text: root.auth.busy || root.auth.launching ? "progress_activity" : "arrow_forward"
+          text: root.auth.busy || root.auth.launching ? "\u{f0772}" : "\u{f0054}"
           color: submit.lit ? "black" : Style.faint
-          font.family: "Material Symbols Rounded"
+          font.family: Style.family
           font.pixelSize: 20
 
           RotationAnimation on rotation {
@@ -352,9 +352,9 @@ Item {
         opacity: sessionMouse.containsMouse ? 1 : 0.75
 
         Text {
-          text: "desktop_windows"
+          text: "\u{f0379}"
           color: Style.dim
-          font.family: "Material Symbols Rounded"
+          font.family: Style.family
           font.pixelSize: 16
           anchors.verticalCenter: parent.verticalCenter
         }
@@ -367,9 +367,9 @@ Item {
 
         Text {
           visible: root.sessions.list.length > 1
-          text: "unfold_more"
+          text: "\u{f054f}"
           color: Style.dim
-          font.family: "Material Symbols Rounded"
+          font.family: Style.family
           font.pixelSize: 15
           anchors.verticalCenter: parent.verticalCenter
         }

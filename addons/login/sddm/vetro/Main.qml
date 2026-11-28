@@ -218,7 +218,7 @@ Rectangle {
     onClicked: passwordInput.forceActiveFocus()
   }
 
-  // Clock: big D-DIN numerals
+  // Clock: big numerals in Omarchy's font
   Text {
     anchors.horizontalCenter: parent.horizontalCenter
     anchors.verticalCenter: parent.verticalCenter

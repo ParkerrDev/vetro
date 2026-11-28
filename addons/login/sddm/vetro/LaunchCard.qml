@@ -137,7 +137,7 @@ Item {
   readonly property string tag: statusTag(launch)
   readonly property bool alarm: !!launch && ["Hold", "Failure", "Partial Failure"].indexOf(launch.status) >= 0
 
-  // Small capitals in D-DIN, the label style used everywhere on the card.
+  // Small capitals in Omarchy's font, the label style used everywhere on the card.
   component Caps: Text {
     property real size: root.pt(0.82)
 

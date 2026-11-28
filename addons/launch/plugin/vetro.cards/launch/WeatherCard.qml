@@ -66,13 +66,14 @@ Item {
     elide: Text.ElideRight
   }
 
-  // Outlined, like the rest of the card's thin lines. (The filled variant of
-  // this variable font renders with holes where its shapes overlap.)
+  // A weather icon by vetro-launchd's name for it, as Omarchy's glyph.
   component Icon: Text {
+    property string name: ""
     property real size: 18
 
+    text: Style.weatherGlyph(name)
     color: Style.text
-    font.family: "Material Symbols Rounded"
+    font.family: Style.family
     font.pixelSize: size
   }
 
@@ -132,7 +133,7 @@ Item {
 
       Icon {
         Layout.alignment: Qt.AlignVCenter
-        text: root.now.icon || "question_mark"
+        name: root.now.icon || ""
         size: 42
       }
 
@@ -209,7 +210,7 @@ Item {
 
           Icon {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: modelData.icon
+            name: modelData.icon
             size: 20
           }
 

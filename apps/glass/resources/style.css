@@ -27,7 +27,7 @@
 }
 
 .vetro-window .vetro-wordmark {
-  font-family: "D-DIN Exp", "D-DIN", sans-serif;
+  font-family: monospace;
   font-size: 30px;
   font-weight: 300;
   letter-spacing: 8px;

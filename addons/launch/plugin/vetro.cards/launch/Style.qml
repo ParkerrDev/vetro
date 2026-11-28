@@ -2,19 +2,33 @@ pragma Singleton
 
 import QtQuick
 import Quickshell
+import qs.Commons as Omarchy
 
 // The launch look, shared by the desktop cards and the login screen: pure
-// white type and hairlines on black glass that Hyprland blurs, set in D-DIN
-// like SpaceX's own site and webcast graphics. Black, white and transparency
-// only: no tints, no gradients, no accent colors.
+// white type and hairlines on black glass that Hyprland blurs, set in
+// Omarchy's own font like the rest of the desktop. Black, white and
+// transparency only: no tints, no gradients, no accent colors.
 Singleton {
   id: root
 
-  // D-DIN is bundled (fonts/, SIL Open Font License), so it works on the
-  // login screen too, where nothing from ~/.local/share/fonts is visible.
-  readonly property string family: din.status === FontLoader.Ready ? din.font.family : "sans-serif"
-  // The extended cut, for the few big numbers.
-  readonly property string wide: dinExp.status === FontLoader.Ready ? dinExp.font.family : family
+  // Omarchy's font (the `monospace` that `omarchy font set` points at,
+  // JetBrainsMono Nerd Font as it ships), for the type and, as Nerd Font
+  // glyphs, for the icons. `wide` is what the few big numbers are set in.
+  readonly property string family: Omarchy.Style.font.family
+  readonly property string wide: family
+
+  // The weather's icons, by the names vetro-launchd gives them (Material's),
+  // as the glyphs Omarchy's own weather panel draws for the same weather.
+  readonly property var weatherGlyphs: ({
+    "sunny": "\u{e30d}", "clear_night": "\u{e32b}",
+    "partly_cloudy_day": "\u{e302}", "partly_cloudy_night": "\u{e32e}",
+    "cloud": "\u{e33d}", "foggy": "\u{e313}",
+    "rainy_light": "\u{e318}", "rainy": "\u{e318}", "rainy_heavy": "\u{e318}",
+    "weather_snowy": "\u{e31a}", "thunderstorm": "\u{e31d}", "weather_hail": "\u{e31d}"
+  })
+  function weatherGlyph(name) {
+    return root.weatherGlyphs[String(name || "")] || "\u{e33d}"
+  }
 
   readonly property color text: "#ffffff"
   readonly property color dim: Qt.rgba(1, 1, 1, 0.72)
@@ -31,24 +45,4 @@ Singleton {
 
   // Letter spacing for small capitals, in pixels per point of type.
   readonly property real capsTracking: 0.22
-
-  FontLoader {
-    id: din
-
-    source: Qt.resolvedUrl("fonts/D-DIN.otf")
-  }
-
-  FontLoader {
-    source: Qt.resolvedUrl("fonts/D-DIN-Bold.otf")
-  }
-
-  FontLoader {
-    id: dinExp
-
-    source: Qt.resolvedUrl("fonts/D-DINExp.otf")
-  }
-
-  FontLoader {
-    source: Qt.resolvedUrl("fonts/D-DINExp-Bold.otf")
-  }
 }

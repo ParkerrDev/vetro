@@ -19,7 +19,7 @@ Item {
   // Read by Omarchy, like omarchy.osd's.
   property bool opened: false
 
-  // What the capsule shows: an icon (a Material Symbols name), a value from
+  // What the capsule shows: an icon (one of Vetro's icon names), a value from
   // 0 to 1 or -1 for none, and a message.
   property string icon: "volume_up"
   property real value: -1
@@ -91,9 +91,10 @@ Item {
     }
   }
 
-  // Omarchy's icon names, as Material Symbols. A Material Symbols name
-  // passes through; anything else (Omarchy also sends raw Nerd Font glyphs)
-  // gets a neutral one.
+  // Omarchy's icon names, as Vetro's icon names (Look.glyph draws each as
+  // Omarchy's own glyph). One of Vetro's names, or a raw Nerd Font glyph
+  // (Omarchy sends those too), passes through; anything else gets a neutral
+  // one.
   function iconFor(name, value) {
     switch (name) {
     case "volume-muted": case "volume-mute": case "muted": case "mute": return "volume_off";
@@ -114,7 +115,7 @@ Item {
     case "media-next": case "player-next": return "skip_next";
     case "media-previous": case "player-previous": return "skip_previous";
     }
-    if (/^[a-z0-9_]+$/.test(name))
+    if (/^[a-z0-9_]+$/.test(name) || /[^\x00-\x7f]/.test(name))
       return name;
     return value >= 0 ? "tune" : "info";
   }
@@ -166,7 +167,7 @@ Item {
           spacing: 12
 
           Icon {
-            text: root.icon
+            name: root.icon
             size: 20
             filled: true
           }

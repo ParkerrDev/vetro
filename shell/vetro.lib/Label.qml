@@ -1,6 +1,6 @@
 import QtQuick
 
-// Type in Vetro's look: D-DIN in the panels' ink, at the shell's size.
+// Type in Vetro's look: Omarchy's font in the panels' ink, at the shell's size.
 Text {
   color: Look.text
   font.family: Look.family

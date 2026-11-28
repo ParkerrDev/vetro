@@ -5,7 +5,7 @@ import QtQuick
 Item {
   id: root
 
-  property string icon: "power_settings_new"
+  property string icon: "\u{f0425}"
   property string label: ""
   property string confirmLabel: "Click again"
   property bool enabled: true
@@ -40,7 +40,7 @@ Item {
       anchors.centerIn: parent
       text: root.icon
       color: root.armed ? "black" : Style.text
-      font.family: "Material Symbols Rounded"
+      font.family: Style.family
       font.pixelSize: 22
     }
   }

@@ -209,7 +209,7 @@ Item {
 
             Icon {
               Layout.alignment: Qt.AlignHCenter
-              text: Notifications.dnd ? "do_not_disturb_on" : "notifications"
+              name: Notifications.dnd ? "do_not_disturb_on" : "notifications"
               size: 34
               color: Look.faint
             }
@@ -245,7 +245,7 @@ Item {
 
     Icon {
       anchors.centerIn: parent
-      text: button.icon
+      name: button.icon
       size: 18
       filled: button.lit
     }

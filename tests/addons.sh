@@ -49,13 +49,17 @@ HOOK=$REPO/addons/theme/hook/60-vetro-launch-theme.sh
 run bash "$HOOK" launch
 store=$H/.standin/gsettings
 has "the launch theme sets GTK's theme" "$store" "gtk-theme 'adw-gtk3-dark'"
-has "and the font" "$store" "font-name 'D-DIN 11'"
+lacks "but not the font: that stays Omarchy's" "$store" "font-name"
 has "and the cursor" "$store" "cursor-theme 'XCursor-Pro-Dark'"
 run bash "$HOOK" tokyo-night
 lacks "another theme takes back the font" "$store" "font-name"
 lacks "and the cursor" "$store" "cursor-theme"
 lacks "and the accent" "$store" "accent-color"
 has "but not what Omarchy sets for every theme" "$store" "gtk-theme 'adw-gtk3-dark'"
+run bash "$HOOK" launch
+run gsettings set org.gnome.desktop.interface font-name "'D-DIN 11'"
+run bash "$HOOK" tokyo-night
+lacks "the D-DIN it once set is taken back" "$store" "font-name"
 run bash "$HOOK" launch
 run gsettings set org.gnome.desktop.interface font-name "'Inter 11'"
 run bash "$HOOK" tokyo-night

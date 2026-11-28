@@ -1,7 +1,7 @@
 #!/bin/bash
 # The login screen: the SpaceX launch video behind black glass, the next
-# launch and D-DIN, as an SDDM theme. It is the only part of Vetro that needs
-# root, so it is not part of install.sh: run it with sudo.
+# launch and Omarchy's font, as an SDDM theme. It is the only part of Vetro
+# that needs root, so it is not part of install.sh: run it with sudo.
 #
 #   addons/login/install-system.sh            put it in place (and, if the earlier
 #                                             login screen is there, migrate-system.sh
