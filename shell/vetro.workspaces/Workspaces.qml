@@ -24,8 +24,7 @@ import "../vetro.lib" as V
 //
 // The numbers stand in trays, one for each display that holds any of them,
 // in the order the displays stand, each led by the display's icon (laptop,
-// monitor, or cast for a virtual one); this bar's own display's tray is the
-// brighter. A dot under a number says it has windows; one without is there
+// monitor, or cast for a virtual one), all alike. A dot under a number says it has windows; one without is there
 // but empty, and dimmer. Only workspaces that exist are shown. The mouse's
 // display has its icon at full brightness (the others are dimmed), and its
 // workspace's number too. Agents' workspaces (agent-workspace)
@@ -782,16 +781,17 @@ BarWidget {
   }
 
   // A tray's back: a capsule, brighter on this bar's own display.
+  // Every tray looks the same: the one for this bar's own display is not
+  // lit apart (2026-11-27: highlighting it is "kinda pointless").
   component TrayBack: Rectangle {
-    property bool here: false
     anchors.centerIn: parent
     readonly property real slim: selector.thickness + Style.space(2)
     width: root.vertical ? Math.min(parent.width - Style.space(6), slim) : parent.width
     height: root.vertical ? parent.height : Math.min(parent.height - Style.space(10), slim)
     radius: Math.min(width, height) / 2
-    color: Qt.rgba(root.ink.r, root.ink.g, root.ink.b, here ? 0.16 : 0.06)
+    color: Qt.rgba(root.ink.r, root.ink.g, root.ink.b, 0.06)
     border.width: 1
-    border.color: Qt.rgba(root.ink.r, root.ink.g, root.ink.b, here ? 0.3 : 0.14)
+    border.color: Qt.rgba(root.ink.r, root.ink.g, root.ink.b, 0.14)
   }
 
   // The agents' workspaces, in a tray of their own led by a robot (once
@@ -1002,7 +1002,6 @@ BarWidget {
         // become just an icon").
         TrayBack {
           visible: !trayItem.tray.locked
-          here: trayItem.tray.here
         }
 
         Grid {
