@@ -21,7 +21,7 @@ import "../vetro.lib" as V
 // 1 to 5 always, plus any other numbered workspace that exists, dimmer when
 // empty. Pressing one focuses that workspace wherever it is shown; a right
 // click locks the display that shows it to it, or frees it (a locked one
-// stands on a little display). The pane
+// stands on a faint monitor icon, with room of its own). The pane
 // on each bar marks the workspace that bar's monitor shows; its number
 // remains visible.
 //
@@ -183,6 +183,12 @@ BarWidget {
   // The room a number has along the bar, and the gap to the next one.
   readonly property real cell: root.vertical ? root.barSize : Style.space(20)
   readonly property real gap: root.vertical ? Style.space(2) : Style.space(1)
+  // A locked number has more room, so the display drawn behind it stands
+  // clear of the numbers beside it.
+  readonly property real lockedCell: root.vertical ? root.cell : Math.round(root.cell + Style.font.body * 1.3)
+  function cellFor(id) {
+    return root.lockedIds.indexOf(id) !== -1 ? root.lockedCell : root.cell
+  }
 
   implicitWidth: grid.implicitWidth + trailingGap
   implicitHeight: grid.implicitHeight
@@ -284,7 +290,9 @@ BarWidget {
     var ids = root.workspaceIds()
     var index = ids.indexOf(focused.id)
     if (index < 0) return NaN
-    return root.along(root.placeOf(root)) + index * (root.cell + root.gap) + root.cell / 2 - origin
+    var before = 0
+    for (var i = 0; i < index && i < 64; i++) before += root.cellFor(ids[i]) + root.gap
+    return root.along(root.placeOf(root)) + before + root.cellFor(focused.id) / 2 - origin
   }
 
   // The same, worked out again whenever anything it is made of changes: the
@@ -476,7 +484,7 @@ BarWidget {
         }
         horizontalMargin: 6
         verticalPadding: 6
-        fixedWidth: root.vertical ? root.barSize : root.cell
+        fixedWidth: root.vertical ? root.barSize : root.cellFor(modelData)
         fixedHeight: root.vertical ? root.cell : root.barSize
         // A right click locks this display to it, or frees it.
         onPressed: function(button) {
@@ -484,47 +492,19 @@ BarWidget {
           else root.focusWorkspace(modelData)
         }
 
-        // A locked one stands on a little display: a screen round the number
-        // and a stand under it, drawn in the bar's text colour.
-        Item {
-          id: display
+        readonly property bool lockedHere: root.lockedIds.indexOf(modelData) !== -1
+        readonly property color lockInk: root.bar ? root.bar.barForeground : Color.foreground
+        // A locked one stands on a display: nf-md-monitor, large and faint,
+        // behind the number, in the bar's text colour.
+        Text {
           z: -1
-          visible: root.lockedIds.indexOf(modelData) !== -1
-          anchors.fill: parent
-          readonly property color ink: root.bar ? root.bar.barForeground : Color.foreground
-          readonly property real screenHeight: Math.round(Style.font.body * 1.3)
-          // Wider than tall, as a monitor is, within the number's room.
-          readonly property real screenWidth: Math.min(parent.width - 2, Math.round(screenHeight * 1.55))
-
-          Rectangle {
-            id: screen
-            width: display.screenWidth
-            height: display.screenHeight
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.verticalCenter: parent.verticalCenter
-            anchors.verticalCenterOffset: -Math.round(Style.font.body * 0.12)
-            radius: Math.round(height * 0.18)
-            color: Qt.alpha(display.ink, 0.08)
-            border.width: 1.2
-            border.color: Qt.alpha(display.ink, 0.7)
-          }
-          // The neck and the foot.
-          Rectangle {
-            width: 1.2
-            height: Math.max(2, Math.round(Style.font.body * 0.18))
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.top: screen.bottom
-            color: Qt.alpha(display.ink, 0.7)
-          }
-          Rectangle {
-            width: Math.round(display.screenWidth * 0.42)
-            height: 1.2
-            radius: 0.6
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.top: screen.bottom
-            anchors.topMargin: Math.max(2, Math.round(Style.font.body * 0.18))
-            color: Qt.alpha(display.ink, 0.7)
-          }
+          visible: parent.lockedHere
+          text: "\u{f0379}"
+          font.family: root.bar ? root.bar.fontFamily : Style.font.family
+          font.pixelSize: Math.round(Style.font.body * 2.1)
+          color: Qt.alpha(parent.lockInk, 0.28)
+          anchors.centerIn: parent
+          anchors.verticalCenterOffset: Math.round(Style.font.body * 0.1)
         }
 
       }
