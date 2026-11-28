@@ -369,8 +369,8 @@ BarWidget {
     border.color: Color.accent
   }
 
-  // Which workspaces some display shows now: each such number gets a soft
-  // accent tint (2026-11-27: "more clear what workspace numbers are
+  // Which workspaces some display shows now: each such number is in the
+  // accent colour (2026-11-27: "more clear what workspace numbers are
   // currently active on each display").
   readonly property var shownIds: {
     var ids = []
@@ -413,6 +413,10 @@ BarWidget {
         bar: root.bar
         text: modelData === 10 ? "0" : String(modelData)
         active: lit
+        // A number some display shows is in the accent colour, a different
+        // kind of mark from the glass pane (2026-11-27: the underline was
+        // "kinda ugly", a tint "too similar" to the pane).
+        foreground: shown ? Color.accent : (root.bar ? root.bar.barForeground : Color.foreground)
         opacity: blinking ? (lit ? 1 : 0.15) : (occupied || focused || shown ? 1 : 0.5)
         scale: lit ? 1.25 : 1
         Behavior on scale {
@@ -424,17 +428,6 @@ BarWidget {
         fixedHeight: root.vertical ? root.cell : root.barSize
         onPressed: function() { root.focusWorkspace(modelData) }
 
-        // A soft accent tint behind a number some display shows, the
-        // pane's size (2026-11-27: the underline was "kinda ugly").
-        Rectangle {
-          z: -1
-          visible: parent.shown
-          anchors.centerIn: parent
-          width: selector.width
-          height: selector.height
-          radius: selector.radius
-          color: Qt.alpha(Color.accent, 0.28)
-        }
       }
     }
   }
