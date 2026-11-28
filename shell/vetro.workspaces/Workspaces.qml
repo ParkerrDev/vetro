@@ -19,7 +19,9 @@ import "../vetro.lib" as V
 //
 // The numbers are Hyprland's global workspaces. Every bar shows the same set:
 // 1 to 5 always, plus any other numbered workspace that exists, dimmer when
-// empty. Pressing one focuses that workspace wherever it is shown. The pane
+// empty. Pressing one focuses that workspace wherever it is shown; a right
+// click locks the display that shows it to it, or frees it (a padlock marks
+// a locked one). The pane
 // on each bar marks the workspace that bar's monitor shows; its number
 // remains visible.
 //
@@ -108,6 +110,44 @@ BarWidget {
 
     ids.sort(function(left, right) { return left - right })
     return ids
+  }
+
+  // Displays locked to a workspace (Super+Shift+L, or a right click on a
+  // number) cannot be switched; a lock marks such a number on every bar. The
+  // locks belong to the Hyprland side, which keeps them in this file, one
+  // "MONITOR ID" a line. Without it there is no file and nothing is locked;
+  // a right click then does nothing.
+  property var lockedIds: []
+  function readLocks(text) {
+    var ids = []
+    var lines = String(text || "").split("\n")
+    for (var i = 0; i < lines.length && i < 32; i++) {
+      var match = /^\S+\s+(-?\d+)\s*$/.exec(lines[i])
+      if (match) ids.push(Number(match[1]))
+    }
+    if (JSON.stringify(ids) !== JSON.stringify(root.lockedIds)) root.lockedIds = ids
+  }
+  FileView {
+    id: locksFile
+    path: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/hypr-workspace-locks"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: root.readLocks(text())
+    onLoadFailed: root.readLocks("")
+  }
+  // The file is replaced, not written in place, and may not exist yet, so it
+  // is read again now and then as well.
+  Timer {
+    interval: 1000
+    running: true
+    repeat: true
+    onTriggered: locksFile.reload()
+  }
+
+  function toggleLock(id) {
+    root.dispatch("(o.workspaces.toggle_lock or function() return function() end end)(" + id
+      + (root.monitor ? ", " + JSON.stringify(root.monitor.name) : "") + ")")
   }
 
   function dispatch(expression) {
@@ -425,7 +465,24 @@ BarWidget {
         verticalPadding: 6
         fixedWidth: root.vertical ? root.barSize : root.cell
         fixedHeight: root.vertical ? root.cell : root.barSize
-        onPressed: function() { root.focusWorkspace(modelData) }
+        // A right click locks this display to it, or frees it.
+        onPressed: function(button) {
+          if (button === Qt.RightButton) root.toggleLock(modelData)
+          else root.focusWorkspace(modelData)
+        }
+
+        // nf-fa-lock, small, at the number's top right corner.
+        Text {
+          visible: root.lockedIds.indexOf(modelData) !== -1
+          text: "\uf023"
+          font.family: root.bar ? root.bar.fontFamily : Style.font.family
+          font.pixelSize: Math.round(Style.font.body * 0.62)
+          color: root.bar ? root.bar.barForeground : Color.foreground
+          anchors.horizontalCenter: parent.horizontalCenter
+          anchors.horizontalCenterOffset: Math.round(parent.width * 0.26)
+          anchors.verticalCenter: parent.verticalCenter
+          anchors.verticalCenterOffset: -Math.round(parent.height * 0.2)
+        }
 
       }
     }
