@@ -232,8 +232,29 @@ BarWidget {
   // A locked number has more room, so the display drawn behind it stands
   // clear of the numbers beside it.
   readonly property real lockedCell: root.vertical ? root.cell : Math.round(root.cell + Style.font.body * 1.3)
+  // A locked one with windows has room on the right for their dots.
   function cellFor(id) {
-    return root.lockedIds.indexOf(id) !== -1 ? root.lockedCell : root.cell
+    if (root.lockedIds.indexOf(id) === -1) return root.cell
+    var ws = root.workspaceById(id)
+    var occupied = ws !== null && ws.toplevels.values.length > 0
+    return root.lockedCell + (occupied && !root.vertical ? root.pipRoom : 0)
+  }
+  readonly property real pipRoom: Math.round(Style.font.body * 0.7)
+
+  // The displays, left to right (then top to bottom), by name: the order of
+  // the segments in each number's map.
+  readonly property var monitorOrder: {
+    var list = []
+    var all = Hyprland.monitors.values
+    for (var i = 0; i < all.length && i < 16; i++) {
+      var m = all[i]
+      var ipc = m.lastIpcObject || {}
+      list.push({ name: String(m.name), x: m.x !== undefined ? m.x : (ipc.x || 0), y: m.y !== undefined ? m.y : (ipc.y || 0) })
+    }
+    list.sort(function (a, b) { return a.x !== b.x ? a.x - b.x : a.y - b.y })
+    var names = []
+    for (var j = 0; j < list.length; j++) names.push(list[j].name)
+    return names
   }
 
   implicitWidth: grid.implicitWidth + trailingGap
@@ -504,7 +525,7 @@ BarWidget {
         text: slot === root.slots ? "0" : String(slot)
         active: lit
         readonly property bool mouseHere: root.mouseWorkspace !== null && root.mouseWorkspace.id === modelData
-        opacity: blinking ? (lit ? 1 : 0.15) : (mouseHere ? 1 : shown ? 0.72 : occupied ? 0.5 : 0.25)
+        opacity: blinking ? (lit ? 1 : 0.15) : (mouseHere ? 1 : shown ? 0.8 : occupied ? 0.6 : 0.3)
         Behavior on opacity {
           enabled: !blinking
           NumberAnimation { duration: V.Look.ms(160) }
@@ -523,6 +544,58 @@ BarWidget {
         onPressed: function(button) {
           if (button === Qt.RightButton && root.locksKnown) root.toggleLock(modelData)
           else root.focusWorkspace(modelData)
+        }
+
+        // Under the number, a little map of the displays, one segment for
+        // each, left to right as they stand; the segment of the display it is
+        // on is lit: solid when it has windows, hollow when it is there but
+        // empty. An unused one has no map at all (2026-11-27: "more clear which
+        // workspaces have apps and which are merely blank, and unused", and
+        // "which workspaces belong to which monitors").
+        readonly property int monitorIndex: workspace !== null && workspace.monitor
+                                            ? root.monitorOrder.indexOf(String(workspace.monitor.name)) : -1
+        Row {
+          id: map
+          visible: !parent.lockedHere && parent.monitorIndex >= 0
+          readonly property real segment: Math.max(5, Math.round(Style.font.body * 0.45))
+          readonly property real thick: Math.max(4, Math.round(Style.font.body * 0.3))
+          spacing: Math.max(1, Math.round(Style.font.body * 0.12))
+          anchors.horizontalCenter: parent.horizontalCenter
+          y: parent.height / 2 + Math.round(Style.font.body * 0.6)
+          Repeater {
+            model: root.monitorOrder.length
+            Rectangle {
+              required property int index
+              readonly property bool here: index === map.parent.monitorIndex
+              width: map.segment
+              height: map.thick
+              radius: Math.min(2, height / 2)
+              color: here && map.parent.occupied ? map.parent.lockInk : "transparent"
+              border.width: here && !map.parent.occupied ? 1 : 0
+              border.color: map.parent.lockInk
+              Rectangle {
+                visible: !parent.here
+                anchors.centerIn: parent
+                width: parent.width
+                height: 1
+                color: map.parent.lockInk
+                opacity: 0.35
+              }
+            }
+          }
+        }
+
+        // A locked one is its display already: a dot beside its little screen
+        // says it has windows.
+        Rectangle {
+          visible: parent.lockedHere && parent.occupied && !root.vertical
+          readonly property real size: Math.max(3, Math.round(Style.font.body * 0.32))
+          width: size
+          height: size
+          radius: size / 2
+          color: parent.lockInk
+          x: (parent.width + plate.screenWidth - root.pipRoom) / 2 + Math.round(Style.font.body * 0.3)
+          y: (parent.height - height) / 2 - Math.round(Style.font.body * 0.2)
         }
 
         readonly property bool lockedHere: root.lockedIds.indexOf(modelData) !== -1
@@ -549,13 +622,15 @@ BarWidget {
               height: plate.screenHeight
               anchors.centerIn: parent
               anchors.verticalCenterOffset: -Math.round(Style.font.body * 0.2)
+              // Aside for the dots, when it has windows.
+              anchors.horizontalCenterOffset: plate.parent.occupied && !root.vertical ? -root.pipRoom / 2 : 0
               radius: Math.round(height * 0.2)
               color: parent.parent.parent.lockInk
             }
             Rectangle {
               width: Math.max(2, Math.round(Style.font.body * 0.14))
               height: plate.stem
-              anchors.horizontalCenter: parent.horizontalCenter
+              anchors.horizontalCenter: screen.horizontalCenter
               anchors.top: screen.bottom
               color: screen.color
             }
@@ -563,7 +638,7 @@ BarWidget {
               width: Math.round(plate.screenWidth * 0.42)
               height: plate.stem
               radius: height / 2
-              anchors.horizontalCenter: parent.horizontalCenter
+              anchors.horizontalCenter: screen.horizontalCenter
               anchors.top: screen.bottom
               anchors.topMargin: plate.stem
               color: screen.color
