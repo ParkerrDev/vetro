@@ -18,14 +18,23 @@ import "../vetro.lib" as V
 // the center", "I would rather it look like a pane of glass", "I don't like how
 // it follows and moves with the mouse", "it only wiggles horizontally").
 //
-// The numbers are Hyprland's global workspaces. Every bar shows the same set:
-// 1 to 5 always, plus any other numbered workspace that exists, dimmer when
-// empty. Pressing one focuses that workspace wherever it is shown; a right
-// click locks the display that shows it to it, or frees it (a locked one
-// is a little display with its number cut out of the screen, and room of
-// its own). The pane
-// on each bar marks the workspace that bar's monitor shows; its number
-// remains visible.
+// The numbers are Omarchy's: each display has workspaces 1 to 10 of its own,
+// a block of ten Hyprland numbers, and its bar shows the first five of them
+// and any of the rest that exist, dimmer when empty, then any workspace only
+// visiting from a display that was unplugged. Which block is whose comes from
+// the file Omarchy keeps (default/hypr/monitor-workspaces.lua), so a Hyprland
+// setup that numbers workspaces another way and keeps that file to match
+// (shared-workspaces, one set for every display) is shown as it numbers them.
+// Pressing a number goes to it, through o.workspaces.focus as Omarchy's own
+// keys do. The pane on each bar marks the workspace that bar's monitor shows;
+// its number remains visible.
+//
+// Locks, when the Hyprland side has them: a setup that can lock a display to
+// its workspace and keeps the locks in $XDG_RUNTIME_DIR/hypr-workspace-locks
+// (shared-workspaces does) has a locked number drawn as a little display with
+// its number cut out of the screen, and room of its own, and a right click on
+// a number calls its o.workspaces.toggle_lock. Without that file there are no
+// locks, and a right click is a click.
 //
 // A button beside the numbers that stands for a workspace of its own is one
 // more place for the pane to go: it slides over to that button when the
@@ -103,27 +112,80 @@ BarWidget {
   // The workspace this monitor shows.
   readonly property var shownWorkspace: root.monitor ? root.monitor.activeWorkspace : Hyprland.focusedWorkspace
 
-  // Show the first five global workspaces, then every other numeric workspace
-  // that exists, on every monitor's bar.
+  // Each display's block of ten, as Omarchy keeps them: connector -> block.
+  readonly property int slots: 10
+  readonly property string monitorName: root.monitor ? root.monitor.name : ""
+  property var blocks: ({})
+
+  function readBlocks(text) {
+    var next = {}
+    var lines = String(text || "").split("\n")
+    for (var i = 0; i < lines.length && i < 64; i++) {
+      var fields = lines[i].split("\t")
+      if (fields.length >= 3 && fields[1] !== "") next[fields[1]] = parseInt(fields[0], 10)
+    }
+    root.blocks = next
+  }
+
+  FileView {
+    path: (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state") + "/omarchy/monitor-workspaces"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: root.readBlocks(text())
+    onLoadFailed: root.readBlocks("")
+  }
+
+  function blockOf(id) {
+    return Math.floor((id - 1) / root.slots)
+  }
+
+  function slotOf(id) {
+    return (id - 1) % root.slots + 1
+  }
+
+  // Until Hyprland has written the file, the workspace a monitor shows is in
+  // its own block.
+  readonly property int block: {
+    var block = root.blocks[root.monitorName]
+    if (block !== undefined) return block
+    var shown = root.shownWorkspace
+    return shown && shown.id > 0 ? root.blockOf(shown.id) : 0
+  }
+
+  // The first five of this display's own, and any of the rest that exist;
+  // after them, the workspaces only visiting it.
   function workspaceIds() {
-    var ids = [1, 2, 3, 4, 5]
+    var base = root.block * root.slots
+    var ids = [base + 1, base + 2, base + 3, base + 4, base + 5]
+    var guests = []
     var values = Hyprland.workspaces.values
 
-    for (var i = 0; i < values.length; i++) {
+    for (var i = 0; i < values.length && i < 128; i++) {
       var id = values[i].id
       if (id <= 0) continue
-      if (ids.indexOf(id) === -1) ids.push(id)
+      if (root.blockOf(id) === root.block) {
+        if (ids.indexOf(id) === -1) ids.push(id)
+      } else if (values[i].monitor && values[i].monitor.name === root.monitorName) {
+        guests.push(id)
+      }
     }
 
     ids.sort(function(left, right) { return left - right })
-    return ids
+    guests.sort(function(left, right) { return left - right })
+    return ids.concat(guests)
   }
 
-  // Displays locked to a workspace (Super+Shift+L, or a right click on a
-  // number) cannot be switched; such a number stands on a little display on every bar. The
-  // locks belong to the Hyprland side, which keeps them in this file, one
-  // "MONITOR ID" a line. Without it there is no file and nothing is locked;
-  // a right click then does nothing.
+  // The first visiting one stands apart from the display's own.
+  function firstGuest(ids, index) {
+    return index > 0 && root.blockOf(ids[index]) !== root.block && root.blockOf(ids[index - 1]) === root.block
+  }
+  readonly property real guestGap: Style.space(6)
+
+  // Displays locked to a workspace, from the Hyprland side's file, one
+  // "MONITOR ID" a line (see the top). The file being there at all says
+  // locks can be made.
+  property bool locksKnown: false
   property var lockedIds: []
   function readLocks(text) {
     var ids = []
@@ -140,8 +202,14 @@ BarWidget {
     watchChanges: true
     printErrors: false
     onFileChanged: reload()
-    onLoaded: root.readLocks(text())
-    onLoadFailed: root.readLocks("")
+    onLoaded: {
+      root.locksKnown = true
+      root.readLocks(text())
+    }
+    onLoadFailed: {
+      root.locksKnown = false
+      root.readLocks("")
+    }
   }
   // The file is replaced, not written in place, and may not exist yet, so it
   // is read again now and then as well.
@@ -162,7 +230,10 @@ BarWidget {
   }
 
   function focusWorkspace(id) {
-    root.dispatch("o.workspaces.focus(" + id + (root.monitor ? ", " + JSON.stringify(root.monitor.name) : "") + ")")
+    if (root.blockOf(id) === root.block)
+      root.dispatch("o.workspaces.focus(" + root.slotOf(id) + ", " + JSON.stringify(root.monitorName) + ")")
+    else
+      root.dispatch("hl.dsp.focus({ workspace = \"" + id + "\" })")
   }
 
   // Quickshell credits every workspace switch to the focused monitor, and
@@ -294,6 +365,9 @@ BarWidget {
     if (index < 0) return NaN
     var before = 0
     for (var i = 0; i < index && i < 64; i++) before += root.cellFor(ids[i]) + root.gap
+    for (var g = 1; !root.vertical && g <= index && g < 64; g++) {
+      if (root.firstGuest(ids, g)) before += root.guestGap
+    }
     return root.along(root.placeOf(root)) + before + root.cellFor(focused.id) / 2 - origin
   }
 
@@ -452,8 +526,13 @@ BarWidget {
         // text colour still shows the flashes.
         readonly property bool lit: blinking && root.blinkStep % 2 === 0
 
+        required property int index
+        readonly property int slot: root.slotOf(modelData)
+        Layout.leftMargin: !root.vertical && root.firstGuest(root.workspaceIds(), index) ? root.guestGap : 0
+        Layout.topMargin: root.vertical && root.firstGuest(root.workspaceIds(), index) ? root.guestGap : 0
+
         bar: root.bar
-        text: modelData === 10 ? "0" : String(modelData)
+        text: slot === root.slots ? "0" : String(slot)
         active: lit
         readonly property bool mouseHere: root.mouseWorkspace !== null && root.mouseWorkspace.id === modelData
         opacity: blinking ? (lit ? 1 : 0.15) : (mouseHere ? 1 : shown ? 0.72 : occupied ? 0.5 : 0.25)
@@ -470,9 +549,10 @@ BarWidget {
         fixedWidth: root.vertical ? root.barSize : root.cellFor(modelData)
         labelVisible: !lockedHere
         fixedHeight: root.vertical ? root.cell : root.barSize
-        // A right click locks this display to it, or frees it.
+        // A right click locks this display to it, or frees it, where the
+        // Hyprland side has locks.
         onPressed: function(button) {
-          if (button === Qt.RightButton) root.toggleLock(modelData)
+          if (button === Qt.RightButton && root.locksKnown) root.toggleLock(modelData)
           else root.focusWorkspace(modelData)
         }
 
