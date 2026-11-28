@@ -18,20 +18,18 @@ import "../vetro.lib" as V
 // it follows and moves with the mouse", "it only wiggles horizontally").
 //
 // The numbers are Omarchy's: each display's block of ten, from the file
-// Omarchy keeps (default/hypr/monitor-workspaces.lua), the first five always
-// and the rest while they exist. Pressing one goes to it through
-// o.workspaces.focus, as Omarchy's keys do. The pane marks the workspace this
+// Omarchy keeps (default/hypr/monitor-workspaces.lua), those that exist.
+// Pressing one goes to it through o.workspaces.focus, as Omarchy's keys do. The pane marks the workspace this
 // bar's display shows.
 //
 // The numbers stand in trays, one for each display that holds any of them,
 // in the order the displays stand, each led by the display's icon (laptop,
 // monitor, or cast for a virtual one); this bar's own display's tray is the
-// brighter. In every tray a bar under a number marks what that display shows.
-// A number with windows is bright, one that is there but empty dim, and the
-// unused ones stand apart after the trays, dimmest. The mouse's display has
-// its tray outlined in the theme's accent, and its workspace's number is in
-// that colour. Agents' workspaces (agent-workspace) have a tray of their own,
-// led by a robot.
+// brighter. A dot under a number says it has windows; one without is there
+// but empty, and dimmer. Only workspaces that exist are shown. The mouse's
+// display has its tray outlined more strongly than the rest, and its
+// workspace's number at full brightness. Agents' workspaces (agent-workspace)
+// have a tray of their own, led by a robot.
 //
 // Where the Hyprland side keeps locks in $XDG_RUNTIME_DIR/hypr-workspace-locks
 // (shared-workspaces does), a locked number is a little display with its
@@ -155,10 +153,10 @@ BarWidget {
     return shown && shown.id > 0 ? root.blockOf(shown.id) : 0
   }
 
-  // The first five of this display's own, and any of the rest that exist.
+  // Those of this display's own block that exist (2026-11-27: the unused
+  // ones "are not needed").
   function workspaceIds() {
-    var base = root.block * root.slots
-    var ids = [base + 1, base + 2, base + 3, base + 4, base + 5]
+    var ids = []
     var values = Hyprland.workspaces.values
     for (var i = 0; i < values.length && i < 128; i++) {
       var id = values[i].id
@@ -312,9 +310,24 @@ BarWidget {
       for (var k = 0; k < all.length && k < 16; k++) {
         if (String(all[k].name) === monitor && all[k].activeWorkspace) shown = all[k].activeWorkspace.id
       }
-      trays.push({ monitor: monitor, kind: root.displayKind(monitor), ids: byMonitor[monitor],
-                   shown: shown, here: monitor === root.monitorName, locked: root.lockedMonitors.indexOf(monitor) !== -1 })
+      var locked = root.lockedMonitors.indexOf(monitor) !== -1
+      var held = byMonitor[monitor]
+      // A locked display is just its little display: the one it is locked
+      // to; anything else hidden there stands with the free ones.
+      if (locked) {
+        var lockedId = -1
+        for (var key in root.lockedBy) if (root.lockedBy[key] === monitor) lockedId = Number(key)
+        if (held.indexOf(lockedId) !== -1) {
+          for (var h = 0; h < held.length; h++) if (held[h] !== lockedId) free.push(held[h])
+          held = [lockedId]
+        } else {
+          locked = false
+        }
+      }
+      trays.push({ monitor: monitor, kind: root.displayKind(monitor), ids: held,
+                   shown: shown, here: monitor === root.monitorName, locked: locked })
     }
+    free.sort(function(left, right) { return left - right })
     return { trays: trays, free: free }
   }
 
@@ -612,16 +625,11 @@ BarWidget {
       else root.focusWorkspace(workspaceId)
     }
 
-    // The one its display shows: a bar under the number, on every display's
-    // tray, so each display's current workspace reads at a glance.
-    Rectangle {
-      visible: number.shown && !number.lockedHere
-      width: root.vertical ? Math.max(3, Math.round(Style.font.body * 0.22)) : Math.round(Style.font.body * 0.8)
-      height: root.vertical ? Math.round(Style.font.body * 0.8) : Math.max(2, Math.round(Style.font.body * 0.16))
-      radius: Math.min(width, height) / 2
-      color: root.ink
-      x: root.vertical ? Math.round(Style.font.body * 0.1) : (parent.width - width) / 2
-      y: root.vertical ? (parent.height - height) / 2 : parent.height / 2 + Math.round(Style.font.body * 0.72)
+    // A dot under the number says it has windows (2026-11-27: "underline
+    // should just show a workspace has applications on it, or maybe use
+    // dots").
+    AppDot {
+      visible: number.occupied && !number.lockedHere
     }
 
     // A locked one is a little display: a filled screen on a stand, its
@@ -692,18 +700,30 @@ BarWidget {
         maskSpreadAtMin: 0.3
         // Full under the number's own brightness; brighter still where
         // the mouse is.
-        opacity: plate.parent.mouseHere ? 0.85 : 0.75
+        opacity: plate.parent.mouseHere ? 1 : 0.7
       }
     }
 
   }
 
   readonly property color ink: root.bar ? root.bar.barForeground : Color.foreground
-  // The mouse's display and workspace are marked in the theme's accent: its
-  // tray outlined, its number in that colour (2026-11-27: "more clear which
-  // display/workspace the mouse is on").
-  readonly property color mouseInk: Color.accent
+  // The mouse's display has its tray outlined, stronger than any other, and
+  // its workspace's number at full brightness (2026-11-27: "more clear which
+  // display/workspace the mouse is on"; no accent colour: "avoid accent
+  // colors").
+  readonly property color mouseInk: root.ink
   readonly property string mouseMonitor: Hyprland.focusedMonitor ? String(Hyprland.focusedMonitor.name) : ""
+
+  // The dot under a number with windows (beside it on a vertical bar).
+  component AppDot: Rectangle {
+    readonly property real size: Math.max(3, Math.round(Style.font.body * 0.28))
+    width: size
+    height: size
+    radius: size / 2
+    color: root.ink
+    x: root.vertical ? Math.round(Style.font.body * 0.15) : (parent.width - width) / 2
+    y: root.vertical ? (parent.height - height) / 2 : parent.height / 2 + Math.round(Style.font.body * 0.62)
+  }
 
   // A tray's back: a capsule, brighter on this bar's own display, outlined in
   // the accent on the mouse's.
@@ -717,7 +737,7 @@ BarWidget {
     radius: Math.min(width, height) / 2
     color: Qt.rgba(root.ink.r, root.ink.g, root.ink.b, here ? 0.16 : 0.06)
     border.width: mouse ? 2 : 1
-    border.color: mouse ? root.mouseInk : Qt.rgba(root.ink.r, root.ink.g, root.ink.b, here ? 0.35 : 0.14)
+    border.color: Qt.rgba(root.ink.r, root.ink.g, root.ink.b, mouse ? 0.9 : here ? 0.3 : 0.14)
   }
 
   // The agents' workspaces, in a tray of their own led by a robot (once
@@ -849,14 +869,8 @@ BarWidget {
                  : entry.label + ": " + entry.windows + (entry.windows === 1 ? " window" : " windows")
     onPressed: function(button) { root.goAgent(entry, button) }
 
-    Rectangle {
-      visible: agentNumber.shown
-      width: root.vertical ? Math.max(3, Math.round(Style.font.body * 0.22)) : Math.round(Style.font.body * 0.8)
-      height: root.vertical ? Math.round(Style.font.body * 0.8) : Math.max(2, Math.round(Style.font.body * 0.16))
-      radius: Math.min(width, height) / 2
-      color: root.ink
-      x: root.vertical ? Math.round(Style.font.body * 0.1) : (parent.width - width) / 2
-      y: root.vertical ? (parent.height - height) / 2 : parent.height / 2 + Math.round(Style.font.body * 0.72)
+    AppDot {
+      visible: agentNumber.occupied
     }
   }
 
@@ -882,12 +896,17 @@ BarWidget {
         id: trayItem
         required property var modelData
         readonly property var tray: modelData
-        implicitWidth: root.vertical ? root.barSize : trayRow.implicitWidth + 2 * root.trayPad
-        implicitHeight: root.vertical ? trayRow.implicitHeight + 2 * root.trayPad : root.barSize
+        readonly property real pad: trayItem.tray.locked ? 0 : root.trayPad
+        implicitWidth: root.vertical ? root.barSize : trayRow.implicitWidth + 2 * pad
+        implicitHeight: root.vertical ? trayRow.implicitHeight + 2 * pad : root.barSize
         width: implicitWidth
         height: implicitHeight
 
+        // A locked display's tray is only its little display (2026-11-27:
+        // "when locking a workspace it should make the entire row/section
+        // become just an icon").
         TrayBack {
+          visible: !trayItem.tray.locked
           here: trayItem.tray.here
           mouse: trayItem.tray.monitor === root.mouseMonitor
         }
@@ -904,6 +923,7 @@ BarWidget {
 
           // The display: a click goes to it.
           WidgetButton {
+            visible: !trayItem.tray.locked
             bar: root.bar
             text: root.displayGlyph(trayItem.tray.kind)
             centerFigures: false
