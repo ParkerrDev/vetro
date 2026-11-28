@@ -340,8 +340,8 @@ BarWidget {
     fragmentShader: Qt.resolvedUrl("pane.frag.qsb")
   }
 
-  // The workspace the mouse is on, on every bar: an outline in the accent
-  // colour round its number, wherever it is shown (2026-11-27: "the cursor
+  // The workspace the mouse is on, on every bar: a thin outline in the
+  // bar's text colour round its number, wherever it is shown (2026-11-27: "the cursor
   // selection should be visible from every display"). Hyprland's focus
   // follows the mouse, so the focused monitor's workspace is the mouse's.
   readonly property var mouseWorkspace: Hyprland.focusedWorkspace
@@ -366,11 +366,14 @@ BarWidget {
     }
     color: "transparent"
     border.width: 1.5
-    border.color: Color.accent
+    // No accent: Vetro keeps to its glass and the bar's own text colour
+    // (2026-11-27: the accent "doesn't fit the theme or style of vetro").
+    border.color: Qt.alpha(root.bar ? root.bar.barForeground : Color.foreground, 0.55)
   }
 
-  // Which workspaces some display shows now: each such number is in the
-  // accent colour (2026-11-27: "more clear what workspace numbers are
+  // Which workspaces some display shows now: each such number is at full
+  // brightness, one with windows but not shown a little dimmer, an empty one
+  // dimmest (2026-11-27: "more clear what workspace numbers are
   // currently active on each display").
   readonly property var shownIds: {
     var ids = []
@@ -413,11 +416,7 @@ BarWidget {
         bar: root.bar
         text: modelData === 10 ? "0" : String(modelData)
         active: lit
-        // A number some display shows is in the accent colour, a different
-        // kind of mark from the glass pane (2026-11-27: the underline was
-        // "kinda ugly", a tint "too similar" to the pane).
-        foreground: shown ? Color.accent : (root.bar ? root.bar.barForeground : Color.foreground)
-        opacity: blinking ? (lit ? 1 : 0.15) : (occupied || focused || shown ? 1 : 0.5)
+        opacity: blinking ? (lit ? 1 : 0.15) : (shown ? 1 : occupied ? 0.6 : 0.3)
         scale: lit ? 1.25 : 1
         Behavior on scale {
           NumberAnimation { duration: V.Look.ms(110); easing.type: Easing.OutQuad }
