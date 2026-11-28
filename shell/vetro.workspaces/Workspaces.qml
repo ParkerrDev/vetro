@@ -305,11 +305,18 @@ BarWidget {
     var trays = []
     for (var j = 0; j < root.monitorOrder.length && j < 16; j++) {
       var monitor = root.monitorOrder[j]
-      if (!byMonitor[monitor]) continue
       var shown = 0
+      // A named workspace it shows (the agents' workspace, a desk): a robot
+      // in its tray says so.
+      var agent = ""
       for (var k = 0; k < all.length && k < 16; k++) {
-        if (String(all[k].name) === monitor && all[k].activeWorkspace) shown = all[k].activeWorkspace.id
+        var active = all[k].activeWorkspace
+        if (String(all[k].name) !== monitor || !active) continue
+        shown = active.id
+        if (active.id < 0 && String(active.name).indexOf("special:") !== 0) agent = String(active.name)
       }
+      if (!byMonitor[monitor] && agent === "") continue
+      if (!byMonitor[monitor]) byMonitor[monitor] = []
       var locked = root.lockedMonitors.indexOf(monitor) !== -1
       var held = byMonitor[monitor]
       // A locked display is just its little display: the one it is locked
@@ -324,7 +331,7 @@ BarWidget {
           locked = false
         }
       }
-      trays.push({ monitor: monitor, kind: root.displayKind(monitor), ids: held,
+      trays.push({ monitor: monitor, kind: root.displayKind(monitor), ids: held, agent: agent,
                    shown: shown, here: monitor === root.monitorName, locked: locked })
     }
     free.sort(function(left, right) { return left - right })
@@ -833,6 +840,47 @@ BarWidget {
     return names
   }
 
+  // A robot standing for the named workspace a display shows.
+  component ShownAgent: WidgetButton {
+    id: shownAgent
+    required property string name
+    readonly property var workspace: {
+      var all = Hyprland.workspaces.values
+      for (var i = 0; i < all.length && i < 128; i++) if (String(all[i].name) === name) return all[i]
+      return null
+    }
+    readonly property bool occupied: workspace !== null && workspace.toplevels.values.length > 0
+    readonly property real middle: {
+      var at = root.vertical ? y + height / 2 : x + width / 2
+      for (var item = parent; item && item !== root && item !== null; item = item.parent)
+        at += root.vertical ? item.y : item.x
+      return at
+    }
+    onMiddleChanged: root.buttonsVersion++
+    Component.onCompleted: root.register("name:" + name, shownAgent)
+    Component.onDestruction: root.unregister("name:" + name, shownAgent)
+
+    bar: root.bar
+    text: "\u{f06a9}"
+    centerFigures: false
+    foreground: root.ink
+    opacity: 1
+    horizontalMargin: 6
+    verticalPadding: 6
+    fixedWidth: root.vertical ? root.barSize - 2 * root.trayPad : root.cell
+    fixedHeight: root.vertical ? root.cell : root.barSize
+    tooltipText: (name === root.agentsWorkspace ? "Agents' workspace"
+                  : name.indexOf(root.deskPrefix) === 0 ? "Desk " + name.slice(root.deskPrefix.length)
+                  : "Workspace " + name) + ", shown here"
+    onPressed: function(button) {
+      root.goAgent({ name: name, kind: name.indexOf(root.deskPrefix) === 0 ? "desk" : "agents" }, button)
+    }
+
+    AppDot {
+      visible: shownAgent.occupied
+    }
+  }
+
   // One agents' workspace's button: numbered in order, marked like the rest.
   component AgentNumber: WidgetButton {
     id: agentNumber
@@ -848,8 +896,8 @@ BarWidget {
       return at
     }
     onMiddleChanged: root.buttonsVersion++
-    Component.onCompleted: root.register("name:" + entry.name, agentNumber)
-    Component.onDestruction: root.unregister("name:" + entry.name, agentNumber)
+    Component.onCompleted: root.register("agent:" + entry.name, agentNumber)
+    Component.onDestruction: root.unregister("agent:" + entry.name, agentNumber)
 
     bar: root.bar
     text: String(index + 1)
@@ -945,6 +993,17 @@ BarWidget {
               required property int modelData
               workspaceId: modelData
               tray: trayItem.tray
+            }
+          }
+
+          // The agents' workspace (or a desk) this display shows, as a robot
+          // where its number would be (2026-11-27: "the monitor looking at it
+          // should get a robot workspace icon as its number").
+          Repeater {
+            model: trayItem.tray.agent !== "" ? [trayItem.tray.agent] : []
+            ShownAgent {
+              required property string modelData
+              name: modelData
             }
           }
         }
