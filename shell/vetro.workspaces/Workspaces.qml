@@ -403,36 +403,12 @@ BarWidget {
     fragmentShader: Qt.resolvedUrl("pane.frag.qsb")
   }
 
-  // The workspace the mouse is on, on every bar: a thin outline in the
-  // bar's text colour round its number, wherever it is shown (2026-11-27: "the cursor
-  // selection should be visible from every display"). Hyprland's focus
-  // follows the mouse, so the focused monitor's workspace is the mouse's.
+  // The workspace the mouse is on, on every bar: its number is the brightest
+  // (2026-11-27: "the cursor selection should be visible from every
+  // display"; "it should just become brighter instead of a square").
+  // Hyprland's focus follows the mouse, so the focused monitor's workspace is
+  // the mouse's.
   readonly property var mouseWorkspace: Hyprland.focusedWorkspace
-  readonly property real mouseSpot: {
-    var at = root.spotFor(root.mouseWorkspace)
-    return at
-  }
-  Rectangle {
-    parent: root.host
-    z: 0
-    visible: root.placed && !isNaN(root.mouseSpot)
-    width: selector.width
-    height: selector.height
-    radius: selector.radius
-    x: root.vertical ? (selector.across - width) / 2 : (isNaN(root.mouseSpot) ? 0 : root.mouseSpot) - width / 2
-    y: root.vertical ? (isNaN(root.mouseSpot) ? 0 : root.mouseSpot) - height / 2 : (selector.across - height) / 2
-    Behavior on x {
-      NumberAnimation { duration: V.Look.ms(200); easing.type: Easing.OutCubic }
-    }
-    Behavior on y {
-      NumberAnimation { duration: V.Look.ms(200); easing.type: Easing.OutCubic }
-    }
-    color: "transparent"
-    border.width: 1.5
-    // No accent: Vetro keeps to its glass and the bar's own text colour
-    // (2026-11-27: the accent "doesn't fit the theme or style of vetro").
-    border.color: Qt.alpha(root.bar ? root.bar.barForeground : Color.foreground, 0.55)
-  }
 
   // Which workspaces some display shows now: each such number is at full
   // brightness, one with windows but not shown a little dimmer, an empty one
@@ -479,7 +455,12 @@ BarWidget {
         bar: root.bar
         text: modelData === 10 ? "0" : String(modelData)
         active: lit
-        opacity: blinking ? (lit ? 1 : 0.15) : (shown ? 1 : occupied ? 0.6 : 0.3)
+        readonly property bool mouseHere: root.mouseWorkspace !== null && root.mouseWorkspace.id === modelData
+        opacity: blinking ? (lit ? 1 : 0.15) : (mouseHere ? 1 : shown ? 0.72 : occupied ? 0.5 : 0.25)
+        Behavior on opacity {
+          enabled: !blinking
+          NumberAnimation { duration: V.Look.ms(160) }
+        }
         scale: lit ? 1.25 : 1
         Behavior on scale {
           NumberAnimation { duration: V.Look.ms(110); easing.type: Easing.OutQuad }
@@ -562,7 +543,9 @@ BarWidget {
             maskInverted: true
             maskThresholdMin: 0.4
             maskSpreadAtMin: 0.3
-            opacity: 0.6
+            // Full under the number's own brightness; brighter still where
+            // the mouse is.
+            opacity: plate.parent.mouseHere ? 0.85 : 0.75
           }
         }
 
