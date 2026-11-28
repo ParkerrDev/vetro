@@ -215,8 +215,12 @@ BarWidget {
   // neighbour's is where the bar has put it. Not a number, with the focus on
   // a workspace that has no button.
   function spot() {
-    var focused = root.current
-    if (focused === null) return NaN
+    return root.spotFor(root.current)
+  }
+
+  // The same for any workspace.
+  function spotFor(focused) {
+    if (focused === null || focused === undefined) return NaN
     var origin = root.along(root.placeOf(root.host))
     var stop = root.stopFor(focused)
     if (stop !== null) {
@@ -336,27 +340,48 @@ BarWidget {
     fragmentShader: Qt.resolvedUrl("pane.frag.qsb")
   }
 
-  // Which monitor the mouse is on: the pane on that monitor's bar gets an
-  // outline in the accent colour (2026-11-27: "another indicator so I know
-  // which workspace my mouse is on"). Hyprland's focus follows the mouse.
-  readonly property bool mouseHere: root.monitor !== null && Hyprland.focusedMonitor === root.monitor
+  // The workspace the mouse is on, on every bar: an outline in the accent
+  // colour round its number, wherever it is shown (2026-11-27: "the cursor
+  // selection should be visible from every display"). Hyprland's focus
+  // follows the mouse, so the focused monitor's workspace is the mouse's.
+  readonly property var mouseWorkspace: Hyprland.focusedWorkspace
+  readonly property real mouseSpot: {
+    var at = root.spotFor(root.mouseWorkspace)
+    return at
+  }
   Rectangle {
     parent: root.host
     z: 0
-    visible: selector.visible
-    x: selector.x
-    y: selector.y
+    visible: root.placed && !isNaN(root.mouseSpot)
     width: selector.width
     height: selector.height
     radius: selector.radius
+    x: root.vertical ? (selector.across - width) / 2 : (isNaN(root.mouseSpot) ? 0 : root.mouseSpot) - width / 2
+    y: root.vertical ? (isNaN(root.mouseSpot) ? 0 : root.mouseSpot) - height / 2 : (selector.across - height) / 2
+    Behavior on x {
+      NumberAnimation { duration: V.Look.ms(200); easing.type: Easing.OutCubic }
+    }
+    Behavior on y {
+      NumberAnimation { duration: V.Look.ms(200); easing.type: Easing.OutCubic }
+    }
     color: "transparent"
     border.width: 1.5
     border.color: Color.accent
-    opacity: root.mouseHere ? 1 : 0
-    Behavior on opacity {
-      NumberAnimation { duration: V.Look.ms(140); easing.type: Easing.OutQuad }
-    }
   }
+
+  // Which workspaces some display shows now: each such number gets a soft
+  // accent tint (2026-11-27: "more clear what workspace numbers are
+  // currently active on each display").
+  readonly property var shownIds: {
+    var ids = []
+    var all = Hyprland.monitors.values
+    for (var i = 0; i < all.length && i < 16; i++) {
+      var ws = all[i].activeWorkspace
+      if (ws && ids.indexOf(ws.id) === -1) ids.push(ws.id)
+    }
+    return ids
+  }
+
 
   GridLayout {
     id: grid
@@ -376,6 +401,8 @@ BarWidget {
         readonly property var workspace: root.workspaceById(modelData)
         readonly property bool occupied: workspace !== null && workspace.toplevels.values.length > 0
         readonly property bool focused: root.current !== null && root.current.id === modelData
+        // Some display shows it now.
+        readonly property bool shown: root.shownIds.indexOf(modelData) !== -1
 
         readonly property bool blinking: root.blinkId === modelData
         // Lit on even steps: full, a little larger and in the attention colour;
@@ -386,7 +413,7 @@ BarWidget {
         bar: root.bar
         text: modelData === 10 ? "0" : String(modelData)
         active: lit
-        opacity: blinking ? (lit ? 1 : 0.15) : (occupied || focused ? 1 : 0.5)
+        opacity: blinking ? (lit ? 1 : 0.15) : (occupied || focused || shown ? 1 : 0.5)
         scale: lit ? 1.25 : 1
         Behavior on scale {
           NumberAnimation { duration: V.Look.ms(110); easing.type: Easing.OutQuad }
@@ -396,6 +423,18 @@ BarWidget {
         fixedWidth: root.vertical ? root.barSize : root.cell
         fixedHeight: root.vertical ? root.cell : root.barSize
         onPressed: function() { root.focusWorkspace(modelData) }
+
+        // A soft accent tint behind a number some display shows, the
+        // pane's size (2026-11-27: the underline was "kinda ugly").
+        Rectangle {
+          z: -1
+          visible: parent.shown
+          anchors.centerIn: parent
+          width: selector.width
+          height: selector.height
+          radius: selector.radius
+          color: Qt.alpha(Color.accent, 0.28)
+        }
       }
     }
   }
