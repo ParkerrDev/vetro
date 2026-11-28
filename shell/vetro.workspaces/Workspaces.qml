@@ -20,8 +20,8 @@ import "../vetro.lib" as V
 // The numbers are Hyprland's global workspaces. Every bar shows the same set:
 // 1 to 5 always, plus any other numbered workspace that exists, dimmer when
 // empty. Pressing one focuses that workspace wherever it is shown; a right
-// click locks the display that shows it to it, or frees it (a padlock marks
-// a locked one). The pane
+// click locks the display that shows it to it, or frees it (a locked one
+// stands on a little display). The pane
 // on each bar marks the workspace that bar's monitor shows; its number
 // remains visible.
 //
@@ -118,7 +118,7 @@ BarWidget {
   }
 
   // Displays locked to a workspace (Super+Shift+L, or a right click on a
-  // number) cannot be switched; a lock marks such a number on every bar. The
+  // number) cannot be switched; such a number stands on a little display on every bar. The
   // locks belong to the Hyprland side, which keeps them in this file, one
   // "MONITOR ID" a line. Without it there is no file and nothing is locked;
   // a right click then does nothing.
@@ -484,17 +484,47 @@ BarWidget {
           else root.focusWorkspace(modelData)
         }
 
-        // nf-fa-lock, small, at the number's top right corner.
-        Text {
+        // A locked one stands on a little display: a screen round the number
+        // and a stand under it, drawn in the bar's text colour.
+        Item {
+          id: display
+          z: -1
           visible: root.lockedIds.indexOf(modelData) !== -1
-          text: "\uf023"
-          font.family: root.bar ? root.bar.fontFamily : Style.font.family
-          font.pixelSize: Math.round(Style.font.body * 0.62)
-          color: root.bar ? root.bar.barForeground : Color.foreground
-          anchors.horizontalCenter: parent.horizontalCenter
-          anchors.horizontalCenterOffset: Math.round(parent.width * 0.26)
-          anchors.verticalCenter: parent.verticalCenter
-          anchors.verticalCenterOffset: -Math.round(parent.height * 0.2)
+          anchors.fill: parent
+          readonly property color ink: root.bar ? root.bar.barForeground : Color.foreground
+          readonly property real screenHeight: Math.round(Style.font.body * 1.3)
+          // Wider than tall, as a monitor is, within the number's room.
+          readonly property real screenWidth: Math.min(parent.width - 2, Math.round(screenHeight * 1.55))
+
+          Rectangle {
+            id: screen
+            width: display.screenWidth
+            height: display.screenHeight
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.verticalCenterOffset: -Math.round(Style.font.body * 0.12)
+            radius: Math.round(height * 0.18)
+            color: Qt.alpha(display.ink, 0.08)
+            border.width: 1.2
+            border.color: Qt.alpha(display.ink, 0.7)
+          }
+          // The neck and the foot.
+          Rectangle {
+            width: 1.2
+            height: Math.max(2, Math.round(Style.font.body * 0.18))
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: screen.bottom
+            color: Qt.alpha(display.ink, 0.7)
+          }
+          Rectangle {
+            width: Math.round(display.screenWidth * 0.42)
+            height: 1.2
+            radius: 0.6
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: screen.bottom
+            anchors.topMargin: Math.max(2, Math.round(Style.font.body * 0.18))
+            color: Qt.alpha(display.ink, 0.7)
+          }
         }
 
       }
